@@ -1,5 +1,5 @@
 {
-  "globalAlerts": [
+  "global": [
     {
       "id": "global-alert-1",
       "type": "price",
@@ -24,7 +24,7 @@
       "description": "1小时内上涨超过5%"
     }
   ],
-  "tokenAlerts": {
+  "tokens": {
     "bitcoin": [
       {
         "id": "btc-alert-1",

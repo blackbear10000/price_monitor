@@ -1,5 +1,5 @@
 {
-  "globalAlerts": [
+  "global": [
     {
       "id": "global-alert-decrease-1",
       "type": "percentage",
@@ -96,5 +96,7 @@
       "priority": "medium",
       "description": "24小时内上涨超过10%"
     }
-  ]
+  ],
+  "tokens": {
+  }
 }
