@@ -1,28 +1,100 @@
 {
   "globalAlerts": [
     {
-      "id": "global-alert-decrease",
+      "id": "global-alert-decrease-1",
       "type": "percentage",
       "condition": "decrease",
-      "value": 0.1,
-      "timeframe": 600,
+      "value": 5,
+      "timeframe": 3600,
       "enabled": true,
       "oneTime": false,
       "cooldown": 86400,
       "priority": "medium",
-      "description": "10分钟内下跌超过0.1%"
+      "description": "1小时内下跌超过5%"
     },
     {
-      "id": "global-alert-increase",
+      "id": "global-alert-decrease-2",
       "type": "percentage",
-      "condition": "decrincreaseease",
-      "value": 0.1,
-      "timeframe": 600,
+      "condition": "decrease",
+      "value": 10,
+      "timeframe": 3600,
       "enabled": true,
       "oneTime": false,
       "cooldown": 86400,
       "priority": "medium",
-      "description": "10分钟内上涨超过0.1%"
+      "description": "1小时内下跌超过10%"
+    },
+    {
+      "id": "global-alert-decrease-3",
+      "type": "percentage",
+      "condition": "decrease",
+      "value": 5,
+      "timeframe": 86400,
+      "enabled": true,
+      "oneTime": false,
+      "cooldown": 86400,
+      "priority": "medium",
+      "description": "24小时内下跌超过5%"
+    },
+    {
+      "id": "global-alert-decrease-4",
+      "type": "percentage",
+      "condition": "decrease",
+      "value": 10,
+      "timeframe": 86400,
+      "enabled": true,
+      "oneTime": false,
+      "cooldown": 86400,
+      "priority": "medium",
+      "description": "24小时内下跌超过10%"
+    },
+    {
+      "id": "global-alert-increase-1",
+      "type": "percentage",
+      "condition": "increase",
+      "value": 5,
+      "timeframe": 3600,
+      "enabled": true,
+      "oneTime": false,
+      "cooldown": 86400,
+      "priority": "medium",
+      "description": "1小时内上涨超过5%"
+    },
+    {
+      "id": "global-alert-increase-2",
+      "type": "percentage",
+      "condition": "increase",
+      "value": 10,
+      "timeframe": 3600,
+      "enabled": true,
+      "oneTime": false,
+      "cooldown": 86400,
+      "priority": "medium",
+      "description": "1小时内上涨超过10%"
+    },
+    {
+      "id": "global-alert-increase-3",
+      "type": "percentage",
+      "condition": "increase",
+      "value": 5,
+      "timeframe": 86400,
+      "enabled": true,
+      "oneTime": false,
+      "cooldown": 86400,
+      "priority": "medium",
+      "description": "1小时内上涨超过5%"
+    },
+    {
+      "id": "global-alert-increase-4",
+      "type": "percentage",
+      "condition": "increase",
+      "value": 10,
+      "timeframe": 86400,
+      "enabled": true,
+      "oneTime": false,
+      "cooldown": 86400,
+      "priority": "medium",
+      "description": "24小时内上涨超过10%"
     }
   ]
 }

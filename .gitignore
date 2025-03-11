@@ -1,6 +1,5 @@
 .env
 node_modules
 data
-./config
 logs
 docs
