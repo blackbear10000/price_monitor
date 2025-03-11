@@ -1,0 +1,22 @@
+{
+  "tokens": [
+    {
+      "symbol": "BTC",
+      "id": "bitcoin",
+      "description": "比特币",
+      "priority": 1
+    },
+    {
+      "symbol": "ETH",
+      "id": "ethereum",
+      "description": "以太坊",
+      "priority": 2
+    },
+    {
+      "symbol": "AXELAR",
+      "id": "axelar",
+      "description": "Axelar",
+      "priority": 3
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "globalAlerts": [
+    {
+      "id": "global-alert-decrease",
+      "type": "percentage",
+      "condition": "decrease",
+      "value": 0.1,
+      "timeframe": 600,
+      "enabled": true,
+      "oneTime": false,
+      "cooldown": 86400,
+      "priority": "medium",
+      "description": "10分钟内下跌超过0.1%"
+    },
+    {
+      "id": "global-alert-increase",
+      "type": "percentage",
+      "condition": "decrincreaseease",
+      "value": 0.1,
+      "timeframe": 600,
+      "enabled": true,
+      "oneTime": false,
+      "cooldown": 86400,
+      "priority": "medium",
+      "description": "10分钟内上涨超过0.1%"
+    }
+  ]
+}
