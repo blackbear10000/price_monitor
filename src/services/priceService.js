@@ -97,44 +97,44 @@ class PriceService {
             const results = [];
             const errors = [];
 
-            for (const token of tokens) {
-              try {
-                  logger.debug(`正在处理代币 ${token.symbol} (ID: ${token.id})`);
-                  const result = await this.getTokenPrice(token.id);
-                  results.push(result);
-              } catch (error) {
-                  logger.error(`获取代币 ${token.symbol} 价格失败: ${error.message}`);
-                  errors.push({
-                      tokenId: token.id,
-                      symbol: token.symbol,
-                      error: error.message
-                  });
-              }
-          }
+          //   for (const token of tokens) {
+          //     try {
+          //         logger.debug(`正在处理代币 ${token.symbol} (ID: ${token.id})`);
+          //         const result = await this.getTokenPrice(token.id);
+          //         results.push(result);
+          //     } catch (error) {
+          //         logger.error(`获取代币 ${token.symbol} 价格失败: ${error.message}`);
+          //         errors.push({
+          //             tokenId: token.id,
+          //             symbol: token.symbol,
+          //             error: error.message
+          //         });
+          //     }
+          // }
             
             // 使用Promise.all和分批处理来控制并发      
-            // for (let i = 0; i < tokens.length; i += limit) {
-            //     const batch = tokens.slice(i, i + limit);
+            for (let i = 0; i < tokens.length; i += limit) {
+                const batch = tokens.slice(i, i + limit);
                 
-            //     logger.debug(`处理批次 ${i / limit + 1}，包含${batch.length}个代币`);
+                logger.debug(`处理批次 ${i / limit + 1}，包含${batch.length}个代币`);
                 
-            //     const batchPromises = batch.map(token => 
-            //         this.getTokenPrice(token.id)
-            //             .then(result => results.push(result))
-            //             .catch(error => {
-            //                 logger.error(`获取代币 ${token.symbol} 价格失败: ${error.message}`);
-            //                 errors.push({
-            //                     tokenId: token.id,
-            //                     symbol: token.symbol,
-            //                     error: error.message
-            //                 });
-            //                 return null;
-            //             })
-            //     );
+                const batchPromises = batch.map(token => 
+                    this.getTokenPrice(token.id)
+                        .then(result => results.push(result))
+                        .catch(error => {
+                            logger.error(`获取代币 ${token.symbol} 价格失败: ${error.message}`);
+                            errors.push({
+                                tokenId: token.id,
+                                symbol: token.symbol,
+                                error: error.message
+                            });
+                            return null;
+                        })
+                );
                 
-            //     // 等待当前批次完成
-            //     await Promise.all(batchPromises);
-            // }
+                // 等待当前批次完成
+                await Promise.all(batchPromises);
+            }
             
             logger.info(`批量获取价格完成: 成功=${results.length}, 失败=${errors.length}`);
             
