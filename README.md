@@ -24,7 +24,7 @@
 1. 克隆仓库
 
 ```bash
-git clone https://github.com/yourusername/price_monitor.git
+git clone https://github.com/blackbear10000/price_monitor.git
 cd price_monitor
 ```
 
