@@ -5,6 +5,8 @@ const cleanupService = require('../../services/cleanupService');
 const tokenModel = require('../../models/token');
 const alertModel = require('../../models/alert');
 const os = require('os');
+const path = require('path');
+const fs = require('fs');
 
 // 获取系统状态信息
 exports.getStatus = async (req, res) => {
@@ -249,6 +251,112 @@ exports.triggerCleanup = async (req, res) => {
         res.status(500).json({
             success: false,
             error: '触发数据清理失败',
+            message: error.message
+        });
+    }
+};
+
+// 重置并重新导入配置文件
+exports.resetAndReimportConfig = async (req, res) => {
+    try {
+        logger.info('开始执行配置文件重置与重新导入...');
+        
+        // 1. 清空现有配置
+        logger.info('清空现有告警配置...');
+        await db.run('DELETE FROM alerts');
+        
+        logger.info('清空已有代币配置...');
+        // 确保不会因为外键约束导致删除失败
+        await db.run('PRAGMA foreign_keys = OFF');
+        await db.run('DELETE FROM tokens');
+        await db.run('PRAGMA foreign_keys = ON');
+        
+        // 2. 重新加载配置文件（强制重新读取文件而不是使用缓存）
+        const tokenConfigPath = path.join(process.cwd(), 'config', 'tokens.json');
+        const alertConfigPath = path.join(process.cwd(), 'config', 'alerts.json');
+        
+        let tokenConfig, alertConfig;
+        
+        // 读取tokens.json
+        if (fs.existsSync(tokenConfigPath)) {
+            try {
+                const tokenData = fs.readFileSync(tokenConfigPath, 'utf8');
+                tokenConfig = JSON.parse(tokenData);
+                logger.info(`成功读取代币配置文件: ${tokenConfigPath}`);
+            } catch (error) {
+                logger.error(`读取代币配置文件失败: ${error.message}`);
+                return res.status(500).json({
+                    success: false,
+                    error: '读取代币配置文件失败',
+                    message: error.message
+                });
+            }
+        } else {
+            logger.error(`代币配置文件不存在: ${tokenConfigPath}`);
+            return res.status(404).json({
+                success: false,
+                error: '代币配置文件不存在',
+                message: `文件 ${tokenConfigPath} 不存在`
+            });
+        }
+        
+        // 读取alerts.json
+        if (fs.existsSync(alertConfigPath)) {
+            try {
+                const alertData = fs.readFileSync(alertConfigPath, 'utf8');
+                alertConfig = JSON.parse(alertData);
+                logger.info(`成功读取告警配置文件: ${alertConfigPath}`);
+            } catch (error) {
+                logger.error(`读取告警配置文件失败: ${error.message}`);
+                return res.status(500).json({
+                    success: false,
+                    error: '读取告警配置文件失败',
+                    message: error.message
+                });
+            }
+        } else {
+            logger.error(`告警配置文件不存在: ${alertConfigPath}`);
+            return res.status(404).json({
+                success: false,
+                error: '告警配置文件不存在',
+                message: `文件 ${alertConfigPath} 不存在`
+            });
+        }
+        
+        // 3. 导入代币配置
+        let tokenResults = null;
+        if (tokenConfig && tokenConfig.tokens && tokenConfig.tokens.length > 0) {
+            logger.info(`开始导入${tokenConfig.tokens.length}个代币...`);
+            tokenResults = await tokenModel.batchAddTokens(tokenConfig.tokens);
+            logger.info(`代币导入完成: 添加=${tokenResults.added}, 跳过=${tokenResults.skipped}`);
+        } else {
+            logger.warn('代币配置文件中没有有效的代币数据');
+        }
+        
+        // 4. 导入告警配置
+        let alertResults = null;
+        if (alertConfig) {
+            logger.info('开始导入告警配置...');
+            alertResults = await alertModel.batchAddAlerts(alertConfig);
+            logger.info(`告警导入完成: 添加=${alertResults.added}, 跳过=${alertResults.skipped}`);
+        } else {
+            logger.warn('告警配置文件中没有有效的告警数据');
+        }
+        
+        // 5. 返回结果
+        res.json({
+            success: true,
+            message: '配置重置与重新导入成功',
+            data: {
+                tokens: tokenResults,
+                alerts: alertResults
+            }
+        });
+    } catch (error) {
+        logger.error(`重置配置失败: ${error.message}`, { error });
+        res.status(500).json({
+            success: false,
+            error: '重置配置失败',
             message: error.message
         });
     }

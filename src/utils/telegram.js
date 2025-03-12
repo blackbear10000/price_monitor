@@ -169,17 +169,11 @@ class TelegramNotifier {
             const priceInfo = `$${formattedPrice}${priceTimestamp ? ` (${this.formatTime(priceTimestamp)})` : ''}`;
             const sourceInfo = priceSource ? `\n价格来源: ${priceSource}` : '';
             
-            // 构建消息
-            const message = `
-🚨 <b>价格告警</b> 🚨
-代币: <b>${tokenSymbol}</b> (${tokenId})
-${tokenDescription ? `描述: ${tokenDescription}\n` : ''}
-当前价格: <b>${priceInfo}</b>${sourceInfo}
-告警类型: ${alertType === 'price' ? '固定价格' : '价格变化百分比'}
+            // 构建简化的消息格式
+            const message = `🚨 <b>${tokenSymbol}</b> (${tokenId})
+当前价格: <b>${priceInfo}</b>
 触发条件: ${conditionText}
-触发时间: ${this.formatTime(time)}
-${description ? `说明: ${description}` : ''}
-            `.trim();
+触发时间: ${this.formatTime(time)}`.trim();
             
             logger.info(`准备发送价格告警通知: ${tokenSymbol}`);
             

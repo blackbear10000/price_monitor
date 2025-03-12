@@ -98,19 +98,12 @@ class LocalNotifier {
             const priceInfo = `$${formattedPrice}${priceTimestamp ? ` (${this.formatTime(priceTimestamp)})` : ''}`;
             const sourceInfo = priceSource ? `价格来源: ${priceSource}\n` : '';
             
-            // 创建一个人类可读的文本文件
-            const textContent = `
-价格告警
-=========
-代币: ${tokenSymbol} (${tokenId})
-${tokenDescription ? `描述: ${tokenDescription}\n` : ''}
+            // 创建一个简化的人类可读的文本文件
+            const textContent = `🚨 ${tokenSymbol} (${tokenId})
 当前价格: ${priceInfo}
-${sourceInfo}告警类型: ${alertType === 'price' ? '固定价格' : '价格变化百分比'}
 触发条件: ${this.formatConditionText(alertType, condition, triggerValue)}
 触发时间: ${this.formatTime(time)}
-${description ? `说明: ${description}` : ''}
-保存时间: ${this.formatTime(new Date())}
-            `.trim();
+保存时间: ${this.formatTime(new Date())}`.trim();
             
             const textFilepath = path.join(this.alertsDir, `${timestamp}_${tokenSymbol}_${alertType}_${condition}.txt`);
             fs.writeFileSync(textFilepath, textContent);
