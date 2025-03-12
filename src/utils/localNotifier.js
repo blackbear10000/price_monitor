@@ -19,10 +19,48 @@ class LocalNotifier {
     
     // 格式化时间
     formatTime(timestamp) {
-        // 强制使用UTC+8时区（中国标准时间）
-        return moment(timestamp)
-            .tz('Asia/Shanghai')
-            .format('YYYY-MM-DD HH:mm:ss [UTC+8]');
+        // 检查时间戳是否已经是UTC+8格式的字符串
+        const momentObj = moment(timestamp);
+        
+        // 检查输入的timestamp是否已经是本地时间（UTC+8）
+        const isLocalTime = process.env.TZ === 'Asia/Shanghai' && !timestamp.endsWith('Z') && !timestamp.includes('+');
+        
+        // 如果已经是本地时间，不需要再转换时区
+        if (isLocalTime) {
+            return momentObj.format('YYYY-MM-DD HH:mm:ss [UTC+8]');
+        } else {
+            // 否则进行时区转换
+            return momentObj.tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss [UTC+8]');
+        }
+    }
+    
+    // 格式化价格，根据价格大小动态调整精度
+    formatPrice(price) {
+        if (!price && price !== 0) return '未知';
+        
+        // 将字符串转为数字
+        const numPrice = Number(price);
+        
+        // 根据价格大小动态调整小数位数
+        if (numPrice >= 1000) {
+            // 大于1000的价格保留2位小数
+            return numPrice.toFixed(2);
+        } else if (numPrice >= 100) {
+            // 100-1000之间保留3位小数
+            return numPrice.toFixed(3);
+        } else if (numPrice >= 1) {
+            // 1-100之间保留4位小数
+            return numPrice.toFixed(4);
+        } else if (numPrice >= 0.01) {
+            // 0.01-1之间保留5位小数
+            return numPrice.toFixed(5);
+        } else if (numPrice >= 0.0001) {
+            // 小于0.01的保留6位小数
+            return numPrice.toFixed(6);
+        } else {
+            // 非常小的值保留8位小数
+            return numPrice.toFixed(8);
+        }
     }
     
     // 保存告警到本地文件
@@ -37,7 +75,9 @@ class LocalNotifier {
                 condition, 
                 triggerValue, 
                 time,
-                description 
+                description,
+                priceSource,
+                priceTimestamp
             } = alertData;
             
             // 生成文件名
@@ -51,14 +91,21 @@ class LocalNotifier {
                 savedAt: new Date().toISOString()
             }, null, 2));
             
+            // 格式化价格显示
+            const formattedPrice = this.formatPrice(currentPrice);
+            
+            // 价格来源信息
+            const priceInfo = `$${formattedPrice}${priceTimestamp ? ` (${this.formatTime(priceTimestamp)})` : ''}`;
+            const sourceInfo = priceSource ? `价格来源: ${priceSource}\n` : '';
+            
             // 创建一个人类可读的文本文件
             const textContent = `
 价格告警
 =========
 代币: ${tokenSymbol} (${tokenId})
 ${tokenDescription ? `描述: ${tokenDescription}\n` : ''}
-当前价格: $${currentPrice}
-告警类型: ${alertType === 'price' ? '固定价格' : '价格变化百分比'}
+当前价格: ${priceInfo}
+${sourceInfo}告警类型: ${alertType === 'price' ? '固定价格' : '价格变化百分比'}
 触发条件: ${this.formatConditionText(alertType, condition, triggerValue)}
 触发时间: ${this.formatTime(time)}
 ${description ? `说明: ${description}` : ''}
@@ -87,9 +134,19 @@ ${description ? `说明: ${description}` : ''}
             const timeframeHours = (triggerValue.timeframe || 300) / 3600;
             const actualChange = triggerValue.actualChange || '未知';
             
+            // 如果有历史价格信息，添加详细比较
+            const historyPrice = triggerValue.historyPrice;
+            const historyTime = triggerValue.historyTime;
+            
+            let compareDetail = '';
+            if (historyPrice && historyTime) {
+                const formattedHistoryPrice = this.formatPrice(historyPrice);
+                compareDetail = `\n参考价格: $${formattedHistoryPrice} (${this.formatTime(historyTime)})`;
+            }
+            
             return condition === 'increase' 
-                ? `在${timeframeHours}小时内上涨超过 ${triggerValue.value}% (实际: ${actualChange}%)` 
-                : `在${timeframeHours}小时内下跌超过 ${triggerValue.value}% (实际: ${actualChange}%)`;
+                ? `在${timeframeHours}小时内上涨超过 ${triggerValue.value}% (实际: ${actualChange}%)${compareDetail}` 
+                : `在${timeframeHours}小时内下跌超过 ${triggerValue.value}% (实际: ${actualChange}%)${compareDetail}`;
         }
         return '未知条件';
     }

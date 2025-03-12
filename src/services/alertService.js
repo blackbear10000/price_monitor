@@ -15,6 +15,35 @@ class AlertService {
         this.alertNotificationCooldown = config.alertNotificationCooldown;
     }
     
+    // 格式化价格，与其他工具保持一致
+    formatPrice(price) {
+        if (!price && price !== 0) return '未知';
+        
+        // 将字符串转为数字
+        const numPrice = Number(price);
+        
+        // 根据价格大小动态调整小数位数
+        if (numPrice >= 1000) {
+            // 大于1000的价格保留2位小数
+            return numPrice.toFixed(2);
+        } else if (numPrice >= 100) {
+            // 100-1000之间保留3位小数
+            return numPrice.toFixed(3);
+        } else if (numPrice >= 1) {
+            // 1-100之间保留4位小数
+            return numPrice.toFixed(4);
+        } else if (numPrice >= 0.01) {
+            // 0.01-1之间保留5位小数
+            return numPrice.toFixed(5);
+        } else if (numPrice >= 0.0001) {
+            // 小于0.01的保留6位小数
+            return numPrice.toFixed(6);
+        } else {
+            // 非常小的值保留8位小数
+            return numPrice.toFixed(8);
+        }
+    }
+    
     // 检查所有代币的告警条件
     async checkAllAlerts() {
         try {
@@ -88,7 +117,7 @@ class AlertService {
                 if (alert.lastTriggered) {
                     const lastTriggeredTime = moment(alert.lastTriggered);
                     // 注意：不要使用add方法，它会修改原始对象，使用clone避免修改原始时间对象
-                    const cooldownEnds = lastTriggeredTime.clone().add(alert.cooldown, 'seconds');
+                    const cooldownEnds = lastTriggeredTime.clone().add(alert.cooldown || 86400, 'seconds');
                     
                     if (moment().isBefore(cooldownEnds)) {
                         const remainingCooldown = cooldownEnds.diff(moment(), 'minutes');
@@ -104,6 +133,70 @@ class AlertService {
                 if (alertCache.has(cacheKey)) {
                     logger.debug(`跳过告警 ${alert.id}，相同条件已在此轮检查中触发过`);
                     continue;
+                }
+                
+                // 检查24小时内是否已触发过类似的告警条件（特别是百分比变化类型）
+                const last24HourAlerts = await db.all(
+                    `SELECT * FROM alert_records 
+                     WHERE alert_id = ? 
+                     AND token_id = ? 
+                     AND alert_type = ? 
+                     AND condition = ? 
+                     AND triggered_at > datetime('now', '-24 hours')
+                     ORDER BY triggered_at DESC`,
+                    [alert.id, token.id, alert.type, alert.condition]
+                );
+                
+                // 对于百分比变化告警，判断是否是同一个下跌/上涨趋势的延续
+                if (alert.type === 'percentage' && last24HourAlerts.length > 0) {
+                    // 如果是百分比告警，计算当前趋势与前一次告警趋势的差异
+                    // 查询当前参考时间点的价格
+                    const timeAgo = moment().subtract(alert.timeframe, 'seconds').toISOString();
+                    const historyOptions = {
+                        start: timeAgo,
+                        limit: 1,
+                        interval: 'raw'
+                    };
+                    
+                    const priceHistory = await priceModel.getPriceHistory(token.id, historyOptions);
+                    
+                    if (priceHistory.history.length > 0) {
+                        const currentReferencePrice = priceHistory.history[0].price;
+                        
+                        // 检查前一次告警的参考价格（如果可以获取）
+                        try {
+                            for (const prevAlert of last24HourAlerts) {
+                                const prevTriggerValue = JSON.parse(prevAlert.trigger_value);
+                                
+                                // 如果能获取到前一次告警的历史价格，比较趋势
+                                if (prevTriggerValue.historyPrice) {
+                                    // 获取前一次告警时的当前价格
+                                    const prevCurrentPrice = prevAlert.current_price;
+                                    
+                                    // 计算前一次告警的趋势
+                                    const prevTrend = prevCurrentPrice - prevTriggerValue.historyPrice;
+                                    
+                                    // 计算当前的趋势
+                                    const currentTrend = currentPrice - currentReferencePrice;
+                                    
+                                    // 如果方向相同且当前趋势没有比前一次告警时强很多（变化不超过20%），则认为是同一趋势
+                                    if ((prevTrend > 0 && currentTrend > 0) || (prevTrend < 0 && currentTrend < 0)) {
+                                        const prevChangeAbs = Math.abs(prevTrend / prevTriggerValue.historyPrice * 100);
+                                        const curChangeAbs = Math.abs(currentTrend / currentReferencePrice * 100);
+                                        
+                                        // 如果当前变化百分比与上次触发时相差不大，认为是同一趋势延续，跳过
+                                        if (Math.abs(curChangeAbs - prevChangeAbs) < 3) {
+                                            logger.debug(`跳过告警 ${alert.id}，与前次告警 ${prevAlert.id} 趋势相似，变化差异小于3%`);
+                                            logger.debug(`前次变化: ${prevChangeAbs.toFixed(2)}%, 当前变化: ${curChangeAbs.toFixed(2)}%`);
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            logger.warn(`比较告警趋势时出错: ${error.message}`);
+                        }
+                    }
                 }
                 
                 let isTriggered = false;

@@ -30,10 +30,48 @@ class TelegramNotifier {
     
     // 格式化时间
     formatTime(timestamp) {
-        // 强制使用UTC+8时区（中国标准时间）
-        return moment(timestamp)
-            .tz('Asia/Shanghai')
-            .format('YYYY-MM-DD HH:mm:ss [UTC+8]');
+        // 检查时间戳是否已经是UTC+8格式的字符串
+        const momentObj = moment(timestamp);
+        
+        // 检查输入的timestamp是否已经是本地时间（UTC+8）
+        const isLocalTime = process.env.TZ === 'Asia/Shanghai' && !timestamp.endsWith('Z') && !timestamp.includes('+');
+        
+        // 如果已经是本地时间，不需要再转换时区
+        if (isLocalTime) {
+            return momentObj.format('YYYY-MM-DD HH:mm:ss [UTC+8]');
+        } else {
+            // 否则进行时区转换
+            return momentObj.tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss [UTC+8]');
+        }
+    }
+    
+    // 格式化价格，根据价格大小动态调整精度
+    formatPrice(price) {
+        if (!price && price !== 0) return '未知';
+        
+        // 将字符串转为数字
+        const numPrice = Number(price);
+        
+        // 根据价格大小动态调整小数位数
+        if (numPrice >= 1000) {
+            // 大于1000的价格保留2位小数
+            return numPrice.toFixed(2);
+        } else if (numPrice >= 100) {
+            // 100-1000之间保留3位小数
+            return numPrice.toFixed(3);
+        } else if (numPrice >= 1) {
+            // 1-100之间保留4位小数
+            return numPrice.toFixed(4);
+        } else if (numPrice >= 0.01) {
+            // 0.01-1之间保留5位小数
+            return numPrice.toFixed(5);
+        } else if (numPrice >= 0.0001) {
+            // 小于0.01的保留6位小数
+            return numPrice.toFixed(6);
+        } else {
+            // 非常小的值保留8位小数
+            return numPrice.toFixed(8);
+        }
     }
     
     // 带重试的API请求
@@ -115,7 +153,8 @@ class TelegramNotifier {
                 
                 let compareDetail = '';
                 if (historyPrice && historyTime) {
-                    compareDetail = `\n参考价格: $${historyPrice} (${this.formatTime(historyTime)})`;
+                    const formattedHistoryPrice = this.formatPrice(historyPrice);
+                    compareDetail = `\n参考价格: $${formattedHistoryPrice} (${this.formatTime(historyTime)})`;
                 }
                 
                 conditionText = condition === 'increase' 
@@ -123,8 +162,11 @@ class TelegramNotifier {
                     : `在${timeframeHours}小时内下跌超过 ${triggerValue.value}% (实际: ${actualChange}%)${compareDetail}`;
             }
             
+            // 格式化价格显示
+            const formattedPrice = this.formatPrice(currentPrice);
+            
             // 价格来源信息
-            const priceInfo = `$${currentPrice}${priceTimestamp ? ` (${this.formatTime(priceTimestamp)})` : ''}`;
+            const priceInfo = `$${formattedPrice}${priceTimestamp ? ` (${this.formatTime(priceTimestamp)})` : ''}`;
             const sourceInfo = priceSource ? `\n价格来源: ${priceSource}` : '';
             
             // 构建消息
