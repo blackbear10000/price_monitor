@@ -1,18 +1,6 @@
 {
   "global": [
     {
-      "id": "global-alert-decrease-1",
-      "type": "percentage",
-      "condition": "decrease",
-      "value": 5,
-      "timeframe": 3600,
-      "enabled": true,
-      "oneTime": false,
-      "cooldown": 86400,
-      "priority": "medium",
-      "description": "1小时内下跌超过5%"
-    },
-    {
       "id": "global-alert-decrease-2",
       "type": "percentage",
       "condition": "decrease",
@@ -25,40 +13,16 @@
       "description": "1小时内下跌超过10%"
     },
     {
-      "id": "global-alert-decrease-3",
-      "type": "percentage",
-      "condition": "decrease",
-      "value": 5,
-      "timeframe": 86400,
-      "enabled": true,
-      "oneTime": false,
-      "cooldown": 86400,
-      "priority": "medium",
-      "description": "24小时内下跌超过5%"
-    },
-    {
       "id": "global-alert-decrease-4",
       "type": "percentage",
       "condition": "decrease",
-      "value": 10,
+      "value": 20,
       "timeframe": 86400,
       "enabled": true,
       "oneTime": false,
       "cooldown": 86400,
       "priority": "medium",
-      "description": "24小时内下跌超过10%"
-    },
-    {
-      "id": "global-alert-increase-1",
-      "type": "percentage",
-      "condition": "increase",
-      "value": 5,
-      "timeframe": 3600,
-      "enabled": true,
-      "oneTime": false,
-      "cooldown": 86400,
-      "priority": "medium",
-      "description": "1小时内上涨超过5%"
+      "description": "24小时内下跌超过20%"
     },
     {
       "id": "global-alert-increase-2",
@@ -73,28 +37,16 @@
       "description": "1小时内上涨超过10%"
     },
     {
-      "id": "global-alert-increase-3",
-      "type": "percentage",
-      "condition": "increase",
-      "value": 5,
-      "timeframe": 86400,
-      "enabled": true,
-      "oneTime": false,
-      "cooldown": 86400,
-      "priority": "medium",
-      "description": "1小时内上涨超过5%"
-    },
-    {
       "id": "global-alert-increase-4",
       "type": "percentage",
       "condition": "increase",
-      "value": 10,
+      "value": 20,
       "timeframe": 86400,
       "enabled": true,
       "oneTime": false,
       "cooldown": 86400,
       "priority": "medium",
-      "description": "24小时内上涨超过10%"
+      "description": "24小时内上涨超过20%"
     }
   ],
   "tokens": {
