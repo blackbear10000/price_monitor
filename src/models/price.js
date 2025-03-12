@@ -153,6 +153,11 @@ class PriceModel {
                 format = 'raw'
             } = options;
             
+            // 首先记录输入参数
+            logger.debug(`调用getPriceHistory - tokenId: ${tokenId}, 参数: ${JSON.stringify({
+                start, end, interval, limit, format
+            })}`);
+            
             // 检查代币是否存在
             const token = await tokenModel.getToken(tokenId);
             if (!token) {
@@ -164,13 +169,48 @@ class PriceModel {
             const params = [tokenId];
             
             if (start) {
-                conditions.push('timestamp >= datetime(?, "utc")');
-                params.push(moment(start).toISOString());
+                // 使用SQLite兼容的时间格式，而不是带T和Z的ISO格式
+                const formattedDate = moment(start).format('YYYY-MM-DD HH:mm:ss');
+                
+                // 尝试两种不同的时间比较方法，看哪一种有效
+                // 1. 使用 datetime 函数
+                // conditions.push('timestamp <= datetime(?, "utc")');
+                // params.push(formattedDate);
+                
+                // 2. 直接比较字符串格式 (SQLite 的时间戳是文本格式)
+                conditions.push('timestamp <= ?');
+                params.push(formattedDate);
+                
+                logger.debug(`价格历史查询时间条件 - start时间: ${start}`);
+                logger.debug(`转换为SQLite格式: ${formattedDate}`);
+                logger.debug(`查询条件: timestamp <= '${formattedDate}'`);
+                
+                // 额外测试：记录数据库中的时间戳格式
+                try {
+                    const sampleTimestamp = await db.get(
+                        `SELECT timestamp FROM price_records WHERE token_id = ? ORDER BY timestamp DESC LIMIT 1`,
+                        [tokenId]
+                    );
+                    if (sampleTimestamp) {
+                        logger.debug(`数据库中的时间戳样例: ${sampleTimestamp.timestamp}`);
+                        logger.debug(`样例时间戳格式: ${typeof sampleTimestamp.timestamp}`);
+                    }
+                } catch (err) {
+                    logger.error(`获取时间戳样例失败: ${err.message}`);
+                }
             }
             
             if (end) {
-                conditions.push('timestamp <= datetime(?, "utc")');
-                params.push(moment(end).toISOString());
+                // 使用SQLite兼容的时间格式，而不是带T和Z的ISO格式
+                const formattedDate = moment(end).format('YYYY-MM-DD HH:mm:ss');
+                
+                // 尝试直接比较字符串
+                conditions.push('timestamp >= ?');
+                params.push(formattedDate);
+                
+                logger.debug(`价格历史查询时间条件 - end时间: ${end}`);
+                logger.debug(`转换为SQLite格式: ${formattedDate}`);
+                logger.debug(`查询条件: timestamp >= '${formattedDate}'`);
             }
             
             let sql;
@@ -186,7 +226,72 @@ class PriceModel {
                 `;
                 params.push(limit);
                 
+                // 记录完整SQL查询
+                const debugSql = sql.replace(/\s+/g, ' ').trim();
+                const paramsCopy = [...params];
+                let debugQuery = debugSql;
+                
+                // 替换参数占位符，创建可读的查询字符串
+                paramsCopy.forEach(param => {
+                    debugQuery = debugQuery.replace('?', typeof param === 'string' ? `'${param}'` : param);
+                });
+                
+                logger.debug(`执行SQL查询: ${debugQuery}`);
+                
                 const records = await db.all(sql, params);
+                
+                if (records.length === 0) {
+                    logger.debug(`没有找到符合条件的价格记录，尝试获取最近的记录而不考虑时间筛选`);
+                    
+                    // 如果没有找到记录，尝试获取任何记录（不使用时间筛选）
+                    const fallbackSql = `
+                        SELECT * FROM price_records 
+                        WHERE token_id = ? 
+                        ORDER BY timestamp DESC 
+                        LIMIT ?
+                    `;
+                    
+                    logger.debug(`执行备用SQL查询: ${fallbackSql.replace(/\s+/g, ' ').trim().replace('?', `'${tokenId}'`).replace('?', limit)}`);
+                    
+                    const fallbackRecords = await db.all(fallbackSql, [tokenId, limit]);
+                    
+                    if (fallbackRecords.length > 0) {
+                        const oldestRecord = fallbackRecords[fallbackRecords.length-1];
+                        const newestRecord = fallbackRecords[0];
+                        
+                        logger.debug(`找到${fallbackRecords.length}条不受时间筛选的记录:`);
+                        logger.debug(`- 最早记录: 时间=${oldestRecord.timestamp}, 价格=${oldestRecord.price}`);
+                        logger.debug(`- 最新记录: 时间=${newestRecord.timestamp}, 价格=${newestRecord.price}`);
+                        
+                        // 记录所有记录的时间和价格
+                        fallbackRecords.forEach((record, index) => {
+                            logger.debug(`记录[${index}]: 时间=${record.timestamp}, 价格=${record.price}`);
+                        });
+                    } else {
+                        logger.warn(`没有找到任何价格记录，即使不考虑时间筛选`);
+                    }
+                    
+                    return {
+                        id: token.id,
+                        symbol: token.symbol,
+                        history: fallbackRecords.map(record => ({
+                            timestamp: record.timestamp,
+                            price: record.price
+                        }))
+                    };
+                }
+                
+                const oldestRecord = records[records.length-1];
+                const newestRecord = records[0];
+                
+                logger.debug(`找到${records.length}条价格记录:`);
+                logger.debug(`- 最早记录: 时间=${oldestRecord.timestamp}, 价格=${oldestRecord.price}`);
+                logger.debug(`- 最新记录: 时间=${newestRecord.timestamp}, 价格=${newestRecord.price}`);
+                
+                // 记录所有记录的时间和价格
+                records.forEach((record, index) => {
+                    logger.debug(`记录[${index}]: 时间=${record.timestamp}, 价格=${record.price}`);
+                });
                 
                 return {
                     id: token.id,
@@ -310,21 +415,25 @@ class PriceModel {
                     timeAgo = moment().subtract(24, 'hours').toISOString();
             }
             
+            // 转换为SQLite兼容格式
+            const formattedTimeAgo = moment(timeAgo).format('YYYY-MM-DD HH:mm:ss');
+            logger.debug(`获取价格统计数据，时间范围: ${period}，查询时间: ${formattedTimeAgo}`);
+            
             // 获取时间范围内的第一个价格
             const firstRecord = await db.get(
                 `SELECT * FROM price_records 
-                 WHERE token_id = ? AND timestamp >= datetime(?, "utc")
+                 WHERE token_id = ? AND timestamp >= ? 
                  ORDER BY timestamp ASC 
                  LIMIT 1`,
-                [tokenId, timeAgo]
+                [tokenId, formattedTimeAgo]
             );
             
             // 获取时间范围内的最高和最低价格
             const highLowPrices = await db.get(
                 `SELECT MAX(price) as high, MIN(price) as low 
                  FROM price_records 
-                 WHERE token_id = ? AND timestamp >= datetime(?, "utc")`,
-                [tokenId, timeAgo]
+                 WHERE token_id = ? AND timestamp >= ?`,
+                [tokenId, formattedTimeAgo]
             );
             
             // 计算价格变化百分比
@@ -353,11 +462,13 @@ class PriceModel {
         try {
             const retentionDays = days || parseInt(process.env.DATA_RETENTION_DAYS) || 90;
             
+            // 使用SQLite兼容的日期格式，不带时间部分
             const cutoffDate = moment().subtract(retentionDays, 'days').format('YYYY-MM-DD');
+            logger.debug(`清理历史数据，保留天数: ${retentionDays}，截止日期: ${cutoffDate}`);
             
             const result = await db.run(
                 `DELETE FROM price_records 
-                 WHERE timestamp < datetime(?, "utc")`,
+                 WHERE timestamp < ?`,
                 [cutoffDate]
             );
             

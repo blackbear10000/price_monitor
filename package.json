@@ -240,7 +240,12 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js"
   },
-  "keywords": ["blockchain", "price", "monitor", "alert"],
+  "keywords": [
+    "blockchain",
+    "price",
+    "monitor",
+    "alert"
+  ],
   "author": "",
   "license": "ISC"
 }

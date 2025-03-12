@@ -3,6 +3,7 @@ const tokenModel = require('../models/token');
 const priceModel = require('../models/price');
 const alertModel = require('../models/alert');
 const telegramNotifier = require('../utils/telegram');
+const localNotifier = require('../utils/localNotifier');
 const config = require('../config');
 const moment = require('moment-timezone');
 
@@ -104,17 +105,29 @@ class AlertService {
                     // 获取指定时间窗口前的价格
                     const timeAgo = moment().subtract(alert.timeframe, 'seconds').toISOString();
                     
+                    logger.debug(`========= 告警检查 [${alert.id}] =========`);
+                    logger.debug(`告警条件: ${alert.condition} ${alert.value}%, 时间窗口: ${alert.timeframe}秒`);
+                    logger.debug(`检查代币: ${token.symbol}, 当前价格: ${currentPrice}`);
+                    logger.debug(`查询 ${alert.timeframe} 秒前的价格: ${timeAgo}`);
+                    
                     const historyOptions = {
                         start: timeAgo,
                         limit: 1,
                         interval: 'raw'
                     };
                     
+                    logger.debug(`发送查询参数: ${JSON.stringify(historyOptions)}`);
+                    
                     const priceHistory = await priceModel.getPriceHistory(token.id, historyOptions);
+                    
+                    logger.debug(`查询结果: 返回 ${priceHistory.history.length} 条记录`);
                     
                     if (priceHistory.history.length > 0) {
                         const oldPrice = priceHistory.history[0].price;
                         const percentChange = ((currentPrice - oldPrice) / oldPrice) * 100;
+                        
+                        logger.debug(`比较价格: 当前=${currentPrice}, 历史=${oldPrice}`);
+                        logger.debug(`计算变化百分比: (${currentPrice} - ${oldPrice}) / ${oldPrice} * 100 = ${percentChange.toFixed(2)}%`);
                         
                         // 更新触发值为实际百分比变化
                         triggerValue = {
@@ -124,13 +137,23 @@ class AlertService {
                         };
                         
                         if (alert.condition === 'increase' && percentChange >= alert.value) {
+                            logger.debug(`告警触发条件满足: ${percentChange.toFixed(2)}% >= ${alert.value}% (increase)`);
                             isTriggered = true;
                         } else if (alert.condition === 'decrease' && percentChange <= -alert.value) {
+                            logger.debug(`告警触发条件满足: ${percentChange.toFixed(2)}% <= -${alert.value}% (decrease)`);
                             isTriggered = true;
+                        } else {
+                            if (alert.condition === 'increase') {
+                                logger.debug(`告警条件未满足: ${percentChange.toFixed(2)}% < ${alert.value}% (increase)`);
+                            } else {
+                                logger.debug(`告警条件未满足: ${percentChange.toFixed(2)}% > -${alert.value}% (decrease)`);
+                            }
                         }
                     } else {
                         logger.warn(`无法检查百分比告警 ${alert.id}，没有足够的历史数据`);
                     }
+                    
+                    logger.debug(`======= 告警检查结束 [${alert.id}] =======`);
                 }
                 
                 // 如果触发了告警
@@ -174,12 +197,28 @@ class AlertService {
                             description: alert.description
                         };
                         
-                        await telegramNotifier.sendPriceAlert(notificationData);
+                        logger.info(`尝试发送告警通知: ${token.symbol}`);
                         
-                        // 更新通知状态
+                        // 先尝试通过Telegram发送
+                        let notificationSent = false;
+                        
+                        try {
+                            notificationSent = await telegramNotifier.sendPriceAlert(notificationData);
+                        } catch (telegramError) {
+                            logger.error(`Telegram通知发送失败: ${telegramError.message}`);
+                        }
+                        
+                        // 如果Telegram发送失败，保存到本地文件
+                        if (!notificationSent) {
+                            logger.info(`尝试保存告警到本地文件...`);
+                            await localNotifier.saveAlertLocal(notificationData);
+                        }
+                        
+                        // 无论通知是否成功，都更新告警记录状态
                         await alertModel.updateAlertNotification(alertRecord.id, true);
+                        logger.info(`告警通知处理完成: ${alertRecord.id}`);
                     } catch (notifyError) {
-                        logger.error(`发送告警通知失败: ${notifyError.message}`, { 
+                        logger.error(`发送告警通知过程中发生错误: ${notifyError.message}`, { 
                             alertId: alert.id, tokenId: token.id, error: notifyError 
                         });
                     }
