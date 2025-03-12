@@ -18,6 +18,6 @@ router.get('/health', systemController.healthCheck);
 router.post('/maintenance/cleanup', systemController.triggerCleanup);
 
 // 重置并重新导入配置文件
-router.post('/reset-config', systemController.resetAndReimportConfig);
+router.post('/reset-config', systemController.resetConfig);
 
 module.exports = router;

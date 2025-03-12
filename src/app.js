@@ -111,7 +111,7 @@ if (!fs.existsSync(configDir)) {
 }
 
 // 初始化数据库
-const initDatabase = async () => {
+const initDatabase = async (forceReloadConfig = true) => {
     try {
         // 运行数据库迁移
         // 使用Promise.all等待所有迁移完成
@@ -255,20 +255,175 @@ const initDatabase = async () => {
         
         logger.info('数据库初始化成功');
         
-        // 导入配置的代币
-        const tokenConfig = config.tokenConfig;
-        if (tokenConfig && tokenConfig.tokens && tokenConfig.tokens.length > 0) {
+        if (forceReloadConfig) {
+            logger.info('启动时强制重新加载配置...');
+            
+            // 1. 暂时禁用外键约束以防止级联删除
+            await db.run('PRAGMA foreign_keys = OFF');
+            
+            // 2. 读取现有代币和符号的映射，以便保留历史数据
+            const existingTokens = await db.all('SELECT id, symbol FROM tokens');
+            logger.info(`当前数据库中有 ${existingTokens.length} 个代币配置`);
+            
+            // 3. 清空配置表，但保留历史记录表
+            logger.info('清空告警配置表...');
+            await db.run('DELETE FROM alerts');
+            
+            logger.info('清空代币配置表...');
+            await db.run('DELETE FROM tokens');
+            
+            // 4. 重新读取配置文件
+            const tokenConfigPath = path.join(process.cwd(), 'config', 'tokens.json');
+            const alertConfigPath = path.join(process.cwd(), 'config', 'alerts.json');
+            
+            // 5. 读取tokens.json
+            let tokenConfig;
+            if (fs.existsSync(tokenConfigPath)) {
+                try {
+                    const tokenData = fs.readFileSync(tokenConfigPath, 'utf8');
+                    tokenConfig = JSON.parse(tokenData);
+                    logger.info(`成功读取代币配置文件: ${tokenConfigPath}`);
+                } catch (error) {
+                    logger.error(`读取代币配置文件失败: ${error.message}`);
+                    throw new Error(`读取代币配置文件失败: ${error.message}`);
+                }
+            } else {
+                logger.error(`代币配置文件不存在: ${tokenConfigPath}`);
+                throw new Error(`代币配置文件不存在: ${tokenConfigPath}`);
+            }
+            
+            // 6. 读取alerts.json
+            let alertConfig;
+            if (fs.existsSync(alertConfigPath)) {
+                try {
+                    const alertData = fs.readFileSync(alertConfigPath, 'utf8');
+                    alertConfig = JSON.parse(alertData);
+                    logger.info(`成功读取告警配置文件: ${alertConfigPath}`);
+                } catch (error) {
+                    logger.error(`读取告警配置文件失败: ${error.message}`);
+                    throw new Error(`读取告警配置文件失败: ${error.message}`);
+                }
+            } else {
+                logger.error(`告警配置文件不存在: ${alertConfigPath}`);
+                throw new Error(`告警配置文件不存在: ${alertConfigPath}`);
+            }
+            
+            // 7. 导入代币配置
             const tokenModel = require('./models/token');
-            await tokenModel.batchAddTokens(tokenConfig.tokens);
-            logger.info(`从配置导入代币成功: ${tokenConfig.tokens.length}个代币`);
-        }
-        
-        // 导入配置的告警
-        const alertConfig = config.alertConfig;
-        if (alertConfig) {
+            if (tokenConfig && tokenConfig.tokens && tokenConfig.tokens.length > 0) {
+                logger.info(`开始导入${tokenConfig.tokens.length}个代币...`);
+                const tokenResults = await tokenModel.batchAddTokens(tokenConfig.tokens);
+                logger.info(`代币导入完成: 添加=${tokenResults.added}, 跳过=${tokenResults.skipped}`);
+                
+                // 8. 检查新旧代币的映射关系
+                const newTokens = tokenConfig.tokens;
+                
+                // 创建符号到ID的映射
+                const existingSymbolToId = {};
+                existingTokens.forEach(token => {
+                    existingSymbolToId[token.symbol] = token.id;
+                });
+                
+                const newSymbolToId = {};
+                newTokens.forEach(token => {
+                    newSymbolToId[token.symbol] = token.id;
+                });
+                
+                // 9. 处理ID变更的情况 - 更新历史记录中的token_id
+                for (const symbol in existingSymbolToId) {
+                    const oldId = existingSymbolToId[symbol];
+                    const newId = newSymbolToId[symbol];
+                    
+                    // 如果同一个符号的代币ID变更了，需要更新历史记录
+                    if (newId && oldId !== newId) {
+                        logger.info(`代币 ${symbol} 的ID已变更: ${oldId} -> ${newId}，更新相关历史记录...`);
+                        
+                        // 更新价格记录
+                        await db.run(
+                            'UPDATE price_records SET token_id = ? WHERE token_id = ?',
+                            [newId, oldId]
+                        );
+                        
+                        // 更新告警记录
+                        await db.run(
+                            'UPDATE alert_records SET token_id = ? WHERE token_id = ?',
+                            [newId, oldId]
+                        );
+                    }
+                }
+            } else {
+                logger.warn('代币配置文件中没有有效的代币数据');
+            }
+            
+            // 10. 导入告警配置
             const alertModel = require('./models/alert');
-            await alertModel.batchAddAlerts(alertConfig);
-            logger.info('从配置导入告警成功');
+            if (alertConfig) {
+                logger.info('开始导入告警配置...');
+                const alertResults = await alertModel.batchAddAlerts(alertConfig);
+                logger.info(`告警导入完成: 添加=${alertResults.added}, 跳过=${alertResults.skipped}`);
+            } else {
+                logger.warn('告警配置文件中没有有效的告警数据');
+            }
+            
+            // 11. 重新启用外键约束
+            await db.run('PRAGMA foreign_keys = ON');
+            
+            // 12. 删除没有对应代币的历史记录
+            logger.info('清理孤立的历史记录...');
+            
+            // 获取当前有效的代币ID列表
+            const validTokenIds = await db.all('SELECT id FROM tokens');
+            const validTokenIdSet = new Set(validTokenIds.map(t => t.id));
+            
+            // 获取价格记录中的代币ID
+            const priceTokenIds = await db.all('SELECT DISTINCT token_id FROM price_records');
+            
+            // 获取告警记录中的代币ID
+            const alertTokenIds = await db.all('SELECT DISTINCT token_id FROM alert_records');
+            
+            // 统计并记录将被删除的记录数
+            let orphanedPriceRecords = 0;
+            let orphanedAlertRecords = 0;
+            
+            for (const { token_id } of priceTokenIds) {
+                if (!validTokenIdSet.has(token_id)) {
+                    const result = await db.run(
+                        'DELETE FROM price_records WHERE token_id = ?',
+                        [token_id]
+                    );
+                    orphanedPriceRecords += result.changes;
+                }
+            }
+            
+            for (const { token_id } of alertTokenIds) {
+                if (!validTokenIdSet.has(token_id)) {
+                    const result = await db.run(
+                        'DELETE FROM alert_records WHERE token_id = ?',
+                        [token_id]
+                    );
+                    orphanedAlertRecords += result.changes;
+                }
+            }
+            
+            logger.info(`已清理 ${orphanedPriceRecords} 条孤立的价格记录和 ${orphanedAlertRecords} 条孤立的告警记录`);
+            
+        } else {
+            // 原有的导入逻辑
+            // 导入配置的代币
+            const tokenConfig = config.tokenConfig;
+            if (tokenConfig && tokenConfig.tokens && tokenConfig.tokens.length > 0) {
+                const tokenModel = require('./models/token');
+                await tokenModel.batchAddTokens(tokenConfig.tokens);
+                logger.info(`从配置导入代币成功: ${tokenConfig.tokens.length}个代币`);
+            }
+            
+            // 导入配置的告警
+            const alertConfig = config.alertConfig;
+            if (alertConfig) {
+                const alertModel = require('./models/alert');
+                await alertModel.batchAddAlerts(alertConfig);
+                logger.info('从配置导入告警成功');
+            }
         }
     } catch (error) {
         logger.error(`数据库初始化失败: ${error.message}`, { error });
@@ -308,3 +463,6 @@ process.on('SIGINT', async () => {
 
 // 启动应用
 startApp();
+
+// 导出 initDatabase 函数供其他模块使用
+module.exports.initDatabase = initDatabase;
