@@ -154,18 +154,20 @@ class Database {
 
 // 在类定义之外，添加通用时间戳格式化函数
 /**
- * 格式化时间戳为统一格式，确保一致的时区处理
+ * 格式化时间戳为统一格式，不受系统时区影响
  * @param {string|Date} timestamp - 要格式化的时间戳，如果为null则使用当前时间
  * @returns {string} - 格式化后的时间戳字符串
  */
 function formatTimestamp(timestamp = null) {
+    // 创建UTC时间，不受系统时区影响
     if (!timestamp) {
-        // 使用UTC时间格式，避免系统时区影响
-        return moment().utc().format('YYYY-MM-DD HH:mm:ss');
+        // 使用moment.utc()直接创建一个UTC时间，不通过本地时区转换
+        return moment.utc().format('YYYY-MM-DD HH:mm:ss');
     }
     
-    // 对于传入的时间戳，确保转换为UTC
-    return moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
+    // 如果timestamp是ISO格式带Z的，moment()会自动识别为UTC
+    // 如果是其他格式，我们强制将其解析为UTC
+    return moment.utc(timestamp).format('YYYY-MM-DD HH:mm:ss');
 }
 
 // 创建单例实例

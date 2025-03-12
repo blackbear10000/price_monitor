@@ -149,8 +149,8 @@ class TokenModel {
     async updateTokenPrice(id, price) {
         try {
             await db.run(
-                `UPDATE tokens SET last_price = ?, last_updated = datetime("now", "utc") WHERE id = ?`,
-                [price, id]
+                `UPDATE tokens SET last_price = ?, last_updated = ? WHERE id = ?`,
+                [price, db.formatTimestamp(), id]
             );
             
             logger.debug(`更新代币价格成功: ${id} = $${price}`);
@@ -226,8 +226,8 @@ class TokenModel {
         // 使用moment-timezone格式化时间戳
         const formatTime = (timestamp) => {
             if (!timestamp) return null;
-            // 确保SQLite的时间戳被正确解析
-            return moment(timestamp).format('YYYY-MM-DD HH:mm:ss');
+            // 直接以UTC解析时间戳，不依赖于系统时区设置
+            return moment.utc(timestamp).format('YYYY-MM-DD HH:mm:ss');
         };
         
         return {

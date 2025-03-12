@@ -770,8 +770,8 @@ class AlertModel {
             // 使用moment-timezone格式化时间戳
             const formatTime = (timestamp) => {
                 if (!timestamp) return null;
-                // 确保SQLite的时间戳被正确解析
-                return moment(timestamp).format('YYYY-MM-DD HH:mm:ss');
+                // 直接以UTC解析时间戳，不依赖于系统时区设置
+                return moment.utc(timestamp).format('YYYY-MM-DD HH:mm:ss');
             };
             
             return {

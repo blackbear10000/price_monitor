@@ -18,20 +18,18 @@ class LocalNotifier {
         logger.info('本地通知服务已初始化');
     }
     
-    // 格式化时间
+    // 格式化时间为本地显示格式（永远显示为Asia/Shanghai时区）
     formatTime(timestamp) {
-        // 检查时间戳是否已经是UTC+8格式的字符串
-        const momentObj = moment(timestamp);
+        // 首先尝试解析输入的时间戳
+        // 如果时间戳包含Z或+，表示它已经指定了时区（通常是UTC）
+        const isUTC = timestamp && (timestamp.endsWith('Z') || timestamp.includes('+'));
         
-        // 检查输入的timestamp是否已经是本地时间（UTC+8）
-        const isLocalTime = process.env.TZ === 'Asia/Shanghai' && !timestamp.endsWith('Z') && !timestamp.includes('+');
-        
-        // 如果已经是本地时间，不需要再转换时区
-        if (isLocalTime) {
-            return momentObj.format('YYYY-MM-DD HH:mm:ss [UTC+8]');
+        if (isUTC) {
+            // 如果是UTC时间，将其转换为Asia/Shanghai时区显示
+            return moment(timestamp).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss [UTC+8]');
         } else {
-            // 否则进行时区转换
-            return momentObj.tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss [UTC+8]');
+            // 如果没有指定时区，假设它已经是UTC时间格式
+            return moment.utc(timestamp).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss [UTC+8]');
         }
     }
     

@@ -47,12 +47,12 @@ class AlertService {
     // 处理时间戳，确保使用正确的时区
     formatTimestamp(timestamp = null) {
         if (!timestamp) {
-            // 生成UTC时间戳
-            return moment().utc().toISOString();
+            // 直接生成UTC时间戳，不受系统时区影响
+            return moment.utc().toISOString();
         }
         
-        // 确保转换为UTC时间戳
-        return moment(timestamp).utc().toISOString();
+        // 直接解析为UTC时间戳，不依赖系统时区
+        return moment.utc(timestamp).toISOString();
     }
     
     // 检查所有代币的告警条件

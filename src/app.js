@@ -146,7 +146,7 @@ const initDatabase = async () => {
                     id TEXT PRIMARY KEY,
                     symbol TEXT NOT NULL,
                     description TEXT,
-                    added_at DATETIME NOT NULL DEFAULT (datetime('now', 'utc')),
+                    added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     last_updated DATETIME,
                     last_price REAL,
                     is_active BOOLEAN NOT NULL DEFAULT 1,
@@ -162,7 +162,7 @@ const initDatabase = async () => {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     token_id TEXT NOT NULL,
                     price REAL NOT NULL,
-                    timestamp DATETIME NOT NULL DEFAULT (datetime('now', 'utc')),
+                    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     source TEXT NOT NULL,
                     raw_data TEXT,
                     FOREIGN KEY (token_id) REFERENCES tokens(id)
@@ -181,7 +181,7 @@ const initDatabase = async () => {
                     condition TEXT NOT NULL,
                     trigger_value REAL NOT NULL,
                     current_value REAL NOT NULL,
-                    triggered_at DATETIME NOT NULL DEFAULT (datetime('now', 'utc')),
+                    triggered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     notification_sent BOOLEAN NOT NULL DEFAULT 0,
                     notification_time DATETIME,
                     priority TEXT NOT NULL DEFAULT 'medium',
@@ -198,7 +198,7 @@ const initDatabase = async () => {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     level TEXT NOT NULL,
                     message TEXT NOT NULL,
-                    timestamp DATETIME NOT NULL DEFAULT (datetime('now', 'utc')),
+                    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     context TEXT
                 )`);
                 
@@ -211,7 +211,7 @@ const initDatabase = async () => {
                     alert_record_id INTEGER,
                     channel TEXT NOT NULL,
                     content TEXT NOT NULL,
-                    sent_at DATETIME NOT NULL DEFAULT (datetime('now', 'utc')),
+                    sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     status TEXT NOT NULL,
                     error_message TEXT,
                     retry_count INTEGER NOT NULL DEFAULT 0,
@@ -233,8 +233,8 @@ const initDatabase = async () => {
                     priority TEXT NOT NULL DEFAULT 'medium',
                     description TEXT,
                     last_triggered DATETIME,
-                    created_at DATETIME NOT NULL DEFAULT (datetime('now', 'utc')),
-                    updated_at DATETIME NOT NULL DEFAULT (datetime('now', 'utc')),
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (token_id) REFERENCES tokens(id)
                 )`);
                 
