@@ -176,21 +176,17 @@ class PriceModel {
             const params = [tokenId];
             
             if (start) {
-                // 使用SQLite兼容的时间格式，而不是带T和Z的ISO格式
-                const formattedDate = moment(start).format('YYYY-MM-DD HH:mm:ss');
+                // 确保使用UTC时间，而不是将本地时间当作UTC处理
+                // 首先解析开始时间为UTC时间
+                const utcStartDate = moment.utc(start).format('YYYY-MM-DD HH:mm:ss');
                 
-                // 尝试两种不同的时间比较方法，看哪一种有效
-                // 1. 使用 datetime 函数
-                // conditions.push('timestamp <= datetime(?, "utc")');
-                // params.push(formattedDate);
-                
-                // 2. 直接比较字符串格式 (SQLite 的时间戳是文本格式)
-                conditions.push('timestamp <= ?');
-                params.push(formattedDate);
+                // 在查询条件中使用大于等于
+                conditions.push('timestamp >= ?');
+                params.push(utcStartDate);
                 
                 logger.debug(`价格历史查询时间条件 - start时间: ${start}`);
-                logger.debug(`转换为SQLite格式: ${formattedDate}`);
-                logger.debug(`查询条件: timestamp <= '${formattedDate}'`);
+                logger.debug(`转换为UTC格式: ${utcStartDate}`);
+                logger.debug(`查询条件: timestamp >= '${utcStartDate}'`);
                 
                 // 额外测试：记录数据库中的时间戳格式
                 try {
@@ -208,16 +204,17 @@ class PriceModel {
             }
             
             if (end) {
-                // 使用SQLite兼容的时间格式，而不是带T和Z的ISO格式
-                const formattedDate = moment(end).format('YYYY-MM-DD HH:mm:ss');
+                // 确保使用UTC时间，而不是将本地时间当作UTC处理
+                // 首先解析结束时间为UTC时间
+                const utcEndDate = moment.utc(end).format('YYYY-MM-DD HH:mm:ss');
                 
-                // 尝试直接比较字符串
-                conditions.push('timestamp >= ?');
-                params.push(formattedDate);
+                // 在查询条件中使用小于等于
+                conditions.push('timestamp <= ?');
+                params.push(utcEndDate);
                 
                 logger.debug(`价格历史查询时间条件 - end时间: ${end}`);
-                logger.debug(`转换为SQLite格式: ${formattedDate}`);
-                logger.debug(`查询条件: timestamp >= '${formattedDate}'`);
+                logger.debug(`转换为UTC格式: ${utcEndDate}`);
+                logger.debug(`查询条件: timestamp <= '${utcEndDate}'`);
             }
             
             let sql;
@@ -403,27 +400,27 @@ class PriceModel {
             // 获取当前价格
             const latestPrice = await this.getLatestPrice(tokenId);
             
-            // 计算时间范围
+            // 计算时间范围 - 确保使用UTC时间
             let timeAgo;
             switch (period) {
                 case '1h':
-                    timeAgo = moment().subtract(1, 'hour').toISOString();
+                    timeAgo = moment.utc().subtract(1, 'hour');
                     break;
                 case '24h':
-                    timeAgo = moment().subtract(24, 'hours').toISOString();
+                    timeAgo = moment.utc().subtract(24, 'hours');
                     break;
                 case '7d':
-                    timeAgo = moment().subtract(7, 'days').toISOString();
+                    timeAgo = moment.utc().subtract(7, 'days');
                     break;
                 case '30d':
-                    timeAgo = moment().subtract(30, 'days').toISOString();
+                    timeAgo = moment.utc().subtract(30, 'days');
                     break;
                 default:
-                    timeAgo = moment().subtract(24, 'hours').toISOString();
+                    timeAgo = moment.utc().subtract(24, 'hours');
             }
             
             // 转换为SQLite兼容格式
-            const formattedTimeAgo = moment(timeAgo).format('YYYY-MM-DD HH:mm:ss');
+            const formattedTimeAgo = timeAgo.format('YYYY-MM-DD HH:mm:ss');
             logger.debug(`获取价格统计数据，时间范围: ${period}，查询时间: ${formattedTimeAgo}`);
             
             // 获取时间范围内的第一个价格
@@ -469,8 +466,8 @@ class PriceModel {
         try {
             const retentionDays = days || parseInt(process.env.DATA_RETENTION_DAYS) || 90;
             
-            // 使用SQLite兼容的日期格式，不带时间部分
-            const cutoffDate = moment().subtract(retentionDays, 'days').format('YYYY-MM-DD');
+            // 使用UTC时间
+            const cutoffDate = moment.utc().subtract(retentionDays, 'days').format('YYYY-MM-DD');
             logger.debug(`清理历史数据，保留天数: ${retentionDays}，截止日期: ${cutoffDate}`);
             
             const result = await db.run(

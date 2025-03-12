@@ -165,8 +165,7 @@ function formatTimestamp(timestamp = null) {
         return moment.utc().format('YYYY-MM-DD HH:mm:ss');
     }
     
-    // 如果timestamp是ISO格式带Z的，moment()会自动识别为UTC
-    // 如果是其他格式，我们强制将其解析为UTC
+    // 强制以UTC格式解析和输出时间戳
     return moment.utc(timestamp).format('YYYY-MM-DD HH:mm:ss');
 }
 

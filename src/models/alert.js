@@ -587,13 +587,19 @@ class AlertModel {
             const params = [];
             
             if (start) {
-                conditions.push('triggered_at >= datetime(?, "utc")');
-                params.push(moment(start).toISOString());
+                // 使用UTC时间格式，不转换为ISO
+                const utcStartDate = moment.utc(start).format('YYYY-MM-DD HH:mm:ss');
+                conditions.push('triggered_at >= ?');
+                params.push(utcStartDate);
+                logger.debug(`告警历史查询 - 开始时间: ${start}, UTC格式: ${utcStartDate}`);
             }
             
             if (end) {
-                conditions.push('triggered_at <= datetime(?, "utc")');
-                params.push(moment(end).toISOString());
+                // 使用UTC时间格式，不转换为ISO
+                const utcEndDate = moment.utc(end).format('YYYY-MM-DD HH:mm:ss');
+                conditions.push('triggered_at <= ?');
+                params.push(utcEndDate);
+                logger.debug(`告警历史查询 - 结束时间: ${end}, UTC格式: ${utcEndDate}`);
             }
             
             if (tokenId) {
@@ -618,6 +624,18 @@ class AlertModel {
             }
             sql += ' ORDER BY triggered_at DESC LIMIT ? OFFSET ?';
             params.push(limit, offset);
+            
+            // 记录完整SQL查询
+            const debugSql = sql.replace(/\s+/g, ' ').trim();
+            const paramsCopy = [...params];
+            let debugQuery = debugSql;
+            
+            // 替换参数占位符，创建可读的查询字符串
+            paramsCopy.forEach(param => {
+                debugQuery = debugQuery.replace('?', typeof param === 'string' ? `'${param}'` : param);
+            });
+            
+            logger.debug(`执行告警历史查询SQL: ${debugQuery}`);
             
             // 获取记录
             const records = await db.all(sql, params);
@@ -664,28 +682,28 @@ class AlertModel {
     // 获取告警统计数据
     async getAlertStatistics(period = 'today') {
         try {
-            // 计算时间范围
+            // 计算时间范围 - 确保使用UTC时间
             let startDate;
             switch (period) {
                 case 'today':
-                    startDate = moment().startOf('day').toISOString();
+                    startDate = moment.utc().startOf('day').format('YYYY-MM-DD HH:mm:ss');
                     break;
                 case 'yesterday':
-                    startDate = moment().subtract(1, 'day').startOf('day').toISOString();
+                    startDate = moment.utc().subtract(1, 'day').startOf('day').format('YYYY-MM-DD HH:mm:ss');
                     break;
                 case '7d':
-                    startDate = moment().subtract(7, 'days').toISOString();
+                    startDate = moment.utc().subtract(7, 'days').format('YYYY-MM-DD HH:mm:ss');
                     break;
                 case '30d':
-                    startDate = moment().subtract(30, 'days').toISOString();
+                    startDate = moment.utc().subtract(30, 'days').format('YYYY-MM-DD HH:mm:ss');
                     break;
                 default:
-                    startDate = moment().startOf('day').toISOString();
+                    startDate = moment.utc().startOf('day').format('YYYY-MM-DD HH:mm:ss');
             }
             
             // 获取总告警数
             const totalResult = await db.get(
-                'SELECT COUNT(*) as total FROM alert_records WHERE triggered_at >= datetime(?, "utc")',
+                'SELECT COUNT(*) as total FROM alert_records WHERE triggered_at >= ?',
                 [startDate]
             );
             
@@ -693,7 +711,7 @@ class AlertModel {
             const typeResult = await db.all(
                 `SELECT alert_type, COUNT(*) as count 
                  FROM alert_records 
-                 WHERE triggered_at >= datetime(?, "utc") 
+                 WHERE triggered_at >= ? 
                  GROUP BY alert_type`,
                 [startDate]
             );
@@ -702,7 +720,7 @@ class AlertModel {
             const tokenResult = await db.all(
                 `SELECT token_id, COUNT(*) as count 
                  FROM alert_records 
-                 WHERE triggered_at >= datetime(?, "utc") 
+                 WHERE triggered_at >= ? 
                  GROUP BY token_id 
                  ORDER BY count DESC 
                  LIMIT 10`,
@@ -713,7 +731,7 @@ class AlertModel {
             const priorityResult = await db.all(
                 `SELECT priority, COUNT(*) as count 
                  FROM alert_records 
-                 WHERE triggered_at >= datetime(?, "utc") 
+                 WHERE triggered_at >= ? 
                  GROUP BY priority`,
                 [startDate]
             );
@@ -803,9 +821,9 @@ class AlertModel {
                 cooldown: alert.cooldown,
                 priority: alert.priority,
                 description: alert.description,
-                lastTriggered: alert.last_triggered,
-                createdAt: alert.created_at,
-                updatedAt: alert.updated_at
+                lastTriggered: alert.last_triggered ? moment.utc(alert.last_triggered).format('YYYY-MM-DD HH:mm:ss') : null,
+                createdAt: alert.created_at ? moment.utc(alert.created_at).format('YYYY-MM-DD HH:mm:ss') : null,
+                updatedAt: alert.updated_at ? moment.utc(alert.updated_at).format('YYYY-MM-DD HH:mm:ss') : null
             };
         }
     }
