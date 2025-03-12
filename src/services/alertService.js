@@ -44,6 +44,17 @@ class AlertService {
         }
     }
     
+    // 处理时间戳，确保使用正确的时区
+    formatTimestamp(timestamp = null) {
+        if (!timestamp) {
+            // 生成UTC时间戳
+            return moment().utc().toISOString();
+        }
+        
+        // 确保转换为UTC时间戳
+        return moment(timestamp).utc().toISOString();
+    }
+    
     // 检查所有代币的告警条件
     async checkAllAlerts() {
         try {
@@ -115,12 +126,12 @@ class AlertService {
             try {
                 // 检查冷却期
                 if (alert.lastTriggered) {
-                    const lastTriggeredTime = moment(alert.lastTriggered);
+                    const lastTriggeredTime = moment.utc(alert.lastTriggered);
                     // 注意：不要使用add方法，它会修改原始对象，使用clone避免修改原始时间对象
                     const cooldownEnds = lastTriggeredTime.clone().add(alert.cooldown || 86400, 'seconds');
                     
-                    if (moment().isBefore(cooldownEnds)) {
-                        const remainingCooldown = cooldownEnds.diff(moment(), 'minutes');
+                    if (moment.utc().isBefore(cooldownEnds)) {
+                        const remainingCooldown = cooldownEnds.diff(moment.utc(), 'minutes');
                         logger.debug(`跳过告警 ${alert.id}，仍在冷却期内，剩余约${remainingCooldown}分钟`);
                         continue;
                     }
@@ -213,7 +224,7 @@ class AlertService {
                 } else if (alert.type === 'percentage') {
                     // 百分比变化告警
                     // 获取指定时间窗口前的价格
-                    const timeAgo = moment().subtract(alert.timeframe, 'seconds').toISOString();
+                    const timeAgo = moment.utc().subtract(alert.timeframe, 'seconds').toISOString();
                     
                     logger.debug(`========= 告警检查 [${alert.id}] =========`);
                     logger.debug(`告警条件: ${alert.condition} ${alert.value}%, 时间窗口: ${alert.timeframe}秒`);
@@ -294,7 +305,7 @@ class AlertService {
                             condition: alert.condition,
                             triggerValue,
                             currentPrice,
-                            triggeredAt: moment().toISOString(),
+                            triggeredAt: this.formatTimestamp(),
                             recordId: recentTriggered.id // 使用现有记录ID
                         });
                         
@@ -320,7 +331,7 @@ class AlertService {
                     } else {
                         // 更新最后触发时间
                         await alertModel.updateAlert(alert.id, { 
-                            lastTriggered: moment().toISOString() 
+                            lastTriggered: this.formatTimestamp() 
                         });
                     }
                     
@@ -339,7 +350,7 @@ class AlertService {
                             alertType: alert.type,
                             condition: alert.condition,
                             triggerValue,
-                            time: moment().toISOString(),
+                            time: this.formatTimestamp(),
                             description: alert.description
                         };
                         
@@ -381,7 +392,8 @@ class AlertService {
                         condition: alert.condition,
                         triggerValue,
                         currentPrice,
-                        triggeredAt: moment().toISOString()
+                        triggeredAt: this.formatTimestamp(),
+                        recordId: recentTriggered.id // 使用现有记录ID
                     });
                 }
             } catch (error) {
