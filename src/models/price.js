@@ -28,7 +28,7 @@ class PriceModel {
             return {
                 tokenId,
                 price,
-                timestamp: new Date().toISOString(),
+                timestamp: db.formatTimestamp(),
                 source
             };
         } catch (error) {

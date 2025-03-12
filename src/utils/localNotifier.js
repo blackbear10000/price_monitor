@@ -3,6 +3,7 @@ const path = require('path');
 const logger = require('./logger');
 const moment = require('moment-timezone');
 const config = require('../config');
+const db = require('../utils/database');
 
 class LocalNotifier {
     constructor() {
@@ -63,52 +64,42 @@ class LocalNotifier {
         }
     }
     
-    // 保存告警到本地文件
+    // 将告警保存到本地文件系统
     async saveAlertLocal(alertData) {
         try {
-            const { 
-                tokenSymbol, 
-                tokenId, 
-                tokenDescription,
-                currentPrice, 
-                alertType, 
-                condition, 
-                triggerValue, 
-                time,
-                description,
-                priceSource,
-                priceTimestamp
-            } = alertData;
+            // 格式化时间戳作为文件名的一部分
+            const now = moment();
+            const timeString = now.format('YYYY-MM-DD_HH-mm-ss');
             
-            // 生成文件名
-            const timestamp = moment().format('YYYY-MM-DD_HH-mm-ss');
-            const filename = `${timestamp}_${tokenSymbol}_${alertType}_${condition}.json`;
-            const filepath = path.join(this.alertsDir, filename);
+            // 文件名格式: YYYY-MM-DD_HH-MM-SS_${tokenSymbol}_${alertType}_${condition}.json
+            const fileName = `${timeString}_${alertData.tokenSymbol}_${alertData.alertType}_${alertData.condition}.json`;
+            const filePath = path.join(this.alertsDir, fileName);
             
-            // 保存告警数据
-            fs.writeFileSync(filepath, JSON.stringify({
+            // 格式化当前价格
+            const formattedPrice = this.formatPrice(alertData.currentPrice);
+            
+            // 构建简化的保存内容
+            const simplifiedData = {
                 ...alertData,
-                savedAt: new Date().toISOString()
-            }, null, 2));
+                savedAt: db.formatTimestamp()
+            };
             
-            // 格式化价格显示
-            const formattedPrice = this.formatPrice(currentPrice);
+            // 将数据写入文件
+            await fs.promises.writeFile(filePath, JSON.stringify(simplifiedData, null, 2));
             
-            // 价格来源信息
-            const priceInfo = `$${formattedPrice}${priceTimestamp ? ` (${this.formatTime(priceTimestamp)})` : ''}`;
-            const sourceInfo = priceSource ? `价格来源: ${priceSource}\n` : '';
+            // 创建一个可读的文本版本
+            const textFilePath = path.join(this.alertsDir, `${timeString}_${alertData.tokenSymbol}_${alertData.condition}.txt`);
             
-            // 创建一个简化的人类可读的文本文件
-            const textContent = `🚨 ${tokenSymbol} (${tokenId})
-当前价格: ${priceInfo}
-触发条件: ${this.formatConditionText(alertType, condition, triggerValue)}
-触发时间: ${this.formatTime(time)}
-保存时间: ${this.formatTime(new Date())}`.trim();
+            // 构建更简洁的消息格式
+            const message = `🚨 价格提醒：${alertData.tokenSymbol}
             
-            const textFilepath = path.join(this.alertsDir, `${timestamp}_${tokenSymbol}_${alertType}_${condition}.txt`);
-            fs.writeFileSync(textFilepath, textContent);
+当前价格：$${formattedPrice}
             
-            logger.info(`已保存告警到本地文件: ${filename}`);
+保存时间: ${this.formatTime(db.formatTimestamp())}`.trim();
+            
+            await fs.promises.writeFile(textFilePath, message);
+            
+            logger.info(`告警已保存到本地文件: ${fileName}`);
             return true;
         } catch (error) {
             logger.error(`保存告警到本地文件失败: ${error.message}`, { error, alertData });

@@ -7,6 +7,8 @@ const alertModel = require('../../models/alert');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
+const priceModel = require('../../models/price');
+const priceService = require('../../services/priceService');
 
 // 获取系统状态信息
 exports.getSystemStatus = async (req, res) => {
@@ -51,19 +53,46 @@ exports.getSystemStatus = async (req, res) => {
             failed: 0
         };
         
+        // 获取最近的价格记录
+        const latestPrices = await priceModel.getLatestPrices();
+        
+        // 获取系统错误日志
+        const recentErrors = await db.all(
+            `SELECT * FROM system_logs 
+             WHERE level = 'error' 
+             ORDER BY timestamp DESC 
+             LIMIT 10`
+        );
+        
         res.json({
             success: true,
             data: {
-                uptime: Math.round(uptime),
+                uptime: {
+                    seconds: uptime,
+                    formattedTime: formatUptime(uptime)
+                },
                 version: process.env.npm_package_version || '1.0.0',
                 activeTokens: tokens.length,
                 activeAlerts: globalAlertsCount + tokenAlertsCount,
-                lastPriceUpdate: new Date().toISOString(), // 这里应该使用实际的最后更新时间
+                lastPriceUpdate: db.formatTimestamp(),
                 databaseSize: `${dbSize.sizeMB} MB`,
                 memoryUsage: `${memoryUsageMB} MB`,
                 cpuUsage: `${cpuUsagePercent}%`,
                 apiRequests,
-                notifications
+                notifications,
+                prices: {
+                    recentUpdates: latestPrices.length,
+                    lastPriceUpdate: db.formatTimestamp(),
+                    oldestPrice: latestPrices.length > 0 ? 
+                        Math.min(...latestPrices.map(p => new Date(p.timestamp).getTime())) : null
+                },
+                errors: recentErrors,
+                config: {
+                    priceUpdateInterval: config.priceUpdateInterval,
+                    dataRetentionDays: config.dataRetentionDays,
+                    alertNotificationCooldown: config.alertNotificationCooldown,
+                    timezone: config.timezone
+                }
             }
         });
     } catch (error) {
@@ -357,6 +386,59 @@ exports.resetAndReimportConfig = async (req, res) => {
         res.status(500).json({
             success: false,
             error: '重置配置失败',
+            message: error.message
+        });
+    }
+};
+
+// 记录系统事件
+const logSystemEvent = async (level, message, context = null) => {
+    try {
+        await db.run(
+            `INSERT INTO system_logs (level, message, context) 
+             VALUES (?, ?, ?)`,
+            [level, message, context ? JSON.stringify(context) : null]
+        );
+        
+        return {
+            level,
+            message,
+            context,
+            timestamp: db.formatTimestamp()
+        };
+    } catch (error) {
+        console.error(`记录系统事件失败: ${error.message}`, { level, message, error });
+        return null;
+    }
+};
+
+// 添加系统事件日志
+exports.addSystemLog = async (req, res) => {
+    try {
+        const { level, message, context } = req.body;
+        
+        if (!level || !message) {
+            return res.status(400).json({
+                error: '参数错误',
+                message: '级别和消息是必需的'
+            });
+        }
+        
+        const result = await logSystemEvent(level, message, context);
+        
+        res.status(201).json({
+            success: true,
+            data: {
+                id: result.id,
+                level,
+                message,
+                timestamp: db.formatTimestamp()
+            }
+        });
+    } catch (error) {
+        logger.error(`添加系统日志失败: ${error.message}`, { error });
+        res.status(500).json({
+            error: '添加系统日志失败',
             message: error.message
         });
     }

@@ -76,7 +76,7 @@ class TokenModel {
                 description,
                 priority,
                 isActive,
-                addedAt: new Date().toISOString()
+                addedAt: db.formatTimestamp()
             };
         } catch (error) {
             logger.error(`添加代币失败: ${error.message}`, { tokenData, error });

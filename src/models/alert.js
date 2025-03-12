@@ -310,7 +310,7 @@ class AlertModel {
                 cooldown,
                 priority,
                 description,
-                createdAt: new Date().toISOString()
+                createdAt: db.formatTimestamp()
             };
         } catch (error) {
             logger.error(`添加代币告警失败: ${error.message}`, { tokenId, alertData, error });
@@ -505,19 +505,28 @@ class AlertModel {
         }
     }
     
-    // 记录告警触发
-    async recordAlertTrigger(alertId, tokenId, alertType, condition, triggerValue, currentValue, priority, description) {
+    // 记录告警触发事件
+    async recordAlertTrigger(alertId, tokenId, alertType, condition, triggerValue, currentValue, priority = 'medium', description = null) {
         try {
+            // 准备trigger_value字段
+            let triggerValueForDB = triggerValue;
+            
+            // 如果是对象，转换为JSON字符串
+            if (typeof triggerValue === 'object') {
+                triggerValueForDB = JSON.stringify(triggerValue);
+            }
+            
+            // 插入告警记录
             const result = await db.run(
                 `INSERT INTO alert_records (
-                    alert_id, token_id, alert_type, condition, trigger_value, 
-                    current_value, priority, description
+                    alert_id, token_id, alert_type, condition, 
+                    trigger_value, current_value, priority, description
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [alertId, tokenId, alertType, condition, triggerValue, 
-                 currentValue, priority, description]
+                [alertId, tokenId, alertType, condition, 
+                 triggerValueForDB, currentValue, priority, description]
             );
             
-            logger.info(`记录告警触发成功: ${alertId} ${tokenId} ${currentValue}`);
+            logger.info(`告警触发记录已添加: ${alertId} ${tokenId} ${alertType} ${condition}`);
             
             return {
                 id: result.lastID,
@@ -527,14 +536,14 @@ class AlertModel {
                 condition,
                 triggerValue,
                 currentValue,
-                triggeredAt: new Date().toISOString(),
-                notificationSent: false,
                 priority,
-                description
+                description,
+                triggeredAt: db.formatTimestamp(),
+                notificationSent: false
             };
         } catch (error) {
-            logger.error(`记录告警触发失败: ${error.message}`, { 
-                alertId, tokenId, alertType, condition, triggerValue, currentValue, error 
+            logger.error(`添加告警记录失败: ${error.message}`, { 
+                alertId, tokenId, alertType, condition, error 
             });
             throw error;
         }

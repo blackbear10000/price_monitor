@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const tokenModel = require('../models/token');
 const priceModel = require('../models/price');
 const config = require('../config');
+const db = require('../utils/database');
 
 class PriceService {
     constructor() {
@@ -164,6 +165,52 @@ class PriceService {
             return await this.batchGetPrices();
         } catch (error) {
             logger.error(`刷新所有代币价格失败: ${error.message}`, { error });
+            throw error;
+        }
+    }
+    
+    // 更新单个代币的价格
+    async refreshToken(tokenId) {
+        try {
+            if (!tokenId) {
+                throw new Error('必须提供代币ID');
+            }
+            
+            // 获取代币信息
+            const token = await tokenModel.getToken(tokenId);
+            if (!token) {
+                throw new Error(`代币ID '${tokenId}' 不存在`);
+            }
+            
+            if (!token.isActive) {
+                logger.warn(`代币 ${token.symbol} 未激活，跳过价格更新`);
+                return null;
+            }
+            
+            logger.info(`更新代币 ${token.symbol} 价格...`);
+            
+            // 获取价格
+            const priceInfo = await this.fetchPrice(token.id, token.symbol);
+            
+            // 记录价格
+            await priceModel.addPriceRecord(
+                token.id, 
+                priceInfo.price, 
+                priceInfo.source,
+                priceInfo.rawData
+            );
+            
+            logger.info(`代币 ${token.symbol} 价格更新成功: $${priceInfo.price}`);
+            
+            return {
+                tokenId: token.id,
+                symbol: token.symbol,
+                price: priceInfo.price,
+                timestamp: db.formatTimestamp(),
+                source: priceInfo.source
+            };
+        } catch (error) {
+            logger.error(`更新代币价格失败: ${error.message}`, { tokenId, error });
             throw error;
         }
     }

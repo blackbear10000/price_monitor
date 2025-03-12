@@ -22,22 +22,24 @@ class NotifyService {
         logger.info('本地通知服务已初始化');
     }
     
-    // 添加通知到队列
-    async addToQueue(notification) {
-        try {
-            this.notificationQueue.push(notification);
-            logger.debug(`通知已添加到队列，当前队列长度: ${this.notificationQueue.length}`);
-            
-            // 如果队列处理器未运行，启动它
-            if (!this.isProcessing) {
-                this.processQueue();
-            }
-            
-            return true;
-        } catch (error) {
-            logger.error(`添加通知到队列失败: ${error.message}`, { notification, error });
-            throw error;
-        }
+    // 将通知添加到队列
+    addToQueue(notification) {
+        const id = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        
+        const queueItem = {
+            id,
+            notification,
+            retryCount: 0,
+            status: 'pending',
+            timestamp: db.formatTimestamp(),
+            errors: []
+        };
+        
+        this.notificationQueue.push(queueItem);
+        logger.debug(`已添加通知到队列: ${id}`);
+        
+        this.processQueue();
+        return id;
     }
     
     // 处理通知队列
@@ -69,7 +71,7 @@ class NotifyService {
                         logger.error(`通知达到最大重试次数，放弃发送`, { notification });
                         
                         // 记录失败的通知
-                        await this.recordNotification(notification, 'failed', error.message);
+                        await this.recordNotification(notification.alertRecordId, 'telegram', JSON.stringify(notification.notification), 'failed', notification.lastError, notification.retryCount);
                     }
                 }
                 
@@ -97,7 +99,7 @@ class NotifyService {
             logger.info(`通知发送成功: ${type}`);
             
             // 记录成功的通知
-            await this.recordNotification(notification, 'sent');
+            await this.recordNotification(notification.alertRecordId, 'telegram', JSON.stringify(notification.notification), 'sent');
             
             return true;
         } catch (error) {
@@ -107,30 +109,26 @@ class NotifyService {
     }
     
     // 记录通知历史
-    async recordNotification(notification, status, errorMessage = null) {
+    async recordNotification(alertRecordId, channel, content, status, errorMessage = null, retryCount = 0) {
         try {
-            const { type, data, alertRecordId } = notification;
-            
             await db.run(
                 `INSERT INTO notification_history (
                     alert_record_id, channel, content, status, error_message, retry_count
                 ) VALUES (?, ?, ?, ?, ?, ?)`,
-                [
-                    alertRecordId || null,
-                    'telegram',
-                    JSON.stringify(data),
-                    status,
-                    errorMessage,
-                    notification.retryCount || 0
-                ]
+                [alertRecordId, channel, content, status, errorMessage, retryCount]
             );
             
-            logger.debug(`记录通知历史成功: ${type} ${status}`);
+            logger.debug(`已记录通知历史: ${alertRecordId} ${status}`);
             
-            return true;
+            return {
+                alertRecordId,
+                channel,
+                status,
+                timestamp: db.formatTimestamp()
+            };
         } catch (error) {
-            logger.error(`记录通知历史失败: ${error.message}`, { notification, status, error });
-            return false;
+            logger.error(`记录通知历史失败: ${error.message}`, { error });
+            return null;
         }
     }
     

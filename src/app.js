@@ -9,6 +9,10 @@ const config = require('./config');
 const logger = require('./utils/logger');
 const db = require('./utils/database');
 
+// 设置Node.js的时区环境变量
+process.env.TZ = config.timezone || 'UTC';
+logger.info(`系统时区设置为: ${process.env.TZ}`);
+
 // 导入服务
 const priceService = require('./services/priceService');
 const alertService = require('./services/alertService');
