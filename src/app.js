@@ -3,6 +3,7 @@ const cron = require('node-cron');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
+const moment = require('moment-timezone');
 
 // 导入配置和工具
 const config = require('./config');
@@ -119,6 +120,7 @@ const initDatabase = async () => {
             const sqlite3 = require('sqlite3').verbose();
             const path = require('path');
             const fs = require('fs');
+            const moment = require('moment-timezone');
             
             const dbPath = process.env.DATABASE_PATH || './data/price_monitor.db';
             
@@ -132,6 +134,10 @@ const initDatabase = async () => {
             
             // 启用外键约束
             db.run('PRAGMA foreign_keys = ON');
+            
+            // 格式化当前时间为ISO格式的UTC时间
+            const nowUTC = moment().utc().format('YYYY-MM-DD HH:mm:ss');
+            logger.debug(`初始化数据库使用当前UTC时间: ${nowUTC}`);
             
             // 创建表
             db.serialize(() => {

@@ -4,6 +4,13 @@ const tokenModel = require('./token');
 const moment = require('moment-timezone');
 
 class PriceModel {
+    // 添加时间格式化方法
+    formatTime(timestamp) {
+        if (!timestamp) return null;
+        // 确保SQLite的时间戳被正确解析
+        return moment(timestamp).format('YYYY-MM-DD HH:mm:ss');
+    }
+    
     // 添加价格记录
     async addPriceRecord(tokenId, price, source, rawData = null) {
         try {
@@ -52,7 +59,7 @@ class PriceModel {
                     id: token.id,
                     symbol: token.symbol,
                     price: token.lastPrice,
-                    lastUpdated: token.lastUpdated
+                    lastUpdated: token.lastUpdated // 已经通过TokenModel.formatToken格式化
                 };
             }
             
@@ -78,7 +85,7 @@ class PriceModel {
                 id: token.id,
                 symbol: token.symbol,
                 price: record.price,
-                lastUpdated: record.timestamp
+                lastUpdated: this.formatTime(record.timestamp)
             };
         } catch (error) {
             logger.error(`获取最新价格失败: ${error.message}`, { tokenId, error });
@@ -114,7 +121,7 @@ class PriceModel {
                     result[token.symbol] = {
                         id: token.id,
                         price: token.lastPrice,
-                        lastUpdated: token.lastUpdated
+                        lastUpdated: token.lastUpdated // 已经通过TokenModel.formatToken格式化
                     };
                     continue;
                 }
@@ -131,7 +138,7 @@ class PriceModel {
                 result[token.symbol] = {
                     id: token.id,
                     price: record ? record.price : null,
-                    lastUpdated: record ? record.timestamp : null
+                    lastUpdated: record ? this.formatTime(record.timestamp) : null
                 };
             }
             
@@ -297,7 +304,7 @@ class PriceModel {
                     id: token.id,
                     symbol: token.symbol,
                     history: records.map(record => ({
-                        timestamp: record.timestamp,
+                        timestamp: this.formatTime(record.timestamp),
                         price: record.price
                     }))
                 };
@@ -449,7 +456,7 @@ class PriceModel {
                 changePercent: parseFloat(changePercent.toFixed(2)),
                 high: highLowPrices ? highLowPrices.high : null,
                 low: highLowPrices ? highLowPrices.low : null,
-                lastUpdated: latestPrice.lastUpdated
+                lastUpdated: latestPrice.lastUpdated // latestPrice.lastUpdated已通过getLatestPrice格式化
             };
         } catch (error) {
             logger.error(`获取价格统计数据失败: ${error.message}`, { tokenId, period, error });

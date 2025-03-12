@@ -1,5 +1,6 @@
 const db = require('../utils/database');
 const logger = require('../utils/logger');
+const moment = require('moment-timezone');
 
 class TokenModel {
     // 获取所有代币
@@ -222,15 +223,22 @@ class TokenModel {
     formatToken(token) {
         if (!token) return null;
         
+        // 使用moment-timezone格式化时间戳
+        const formatTime = (timestamp) => {
+            if (!timestamp) return null;
+            // 确保SQLite的时间戳被正确解析
+            return moment(timestamp).format('YYYY-MM-DD HH:mm:ss');
+        };
+        
         return {
             id: token.id,
             symbol: token.symbol,
             description: token.description,
             lastPrice: token.last_price,
-            lastUpdated: token.last_updated,
+            lastUpdated: formatTime(token.last_updated),
             isActive: Boolean(token.is_active),
             priority: token.priority,
-            addedAt: token.added_at
+            addedAt: formatTime(token.added_at)
         };
     }
 }

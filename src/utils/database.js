@@ -28,15 +28,7 @@ class Database {
         this.db.run('PRAGMA foreign_keys = ON');
 
         // 添加格式化时间戳的方法
-        this.formatTimestamp = (timestamp = null) => {
-            if (!timestamp) {
-                // 使用UTC时间格式，避免系统时区影响
-                return moment().utc().format('YYYY-MM-DD HH:mm:ss');
-            }
-            
-            // 对于传入的时间戳，确保转换为UTC
-            return moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
-        };
+        this.formatTimestamp = formatTimestamp;
 
         // 为所有插入和更新操作添加时间戳处理
         const originalRun = this.db.run;
@@ -45,22 +37,46 @@ class Database {
         this.db.run = function(sql, params, callback) {
             // 如果SQL包含datetime('now', 'utc')，替换为带参数的?，并添加格式化的时间戳
             if (typeof sql === 'string') {
+                // 处理SQL中的datetime('now', 'utc')
                 const nowPattern = /datetime\(['"]now['"], *['"]utc['"]\)/gi;
+                
+                // 检查是否包含默认值的时间戳设置，如 DEFAULT (datetime('now', 'utc'))
+                const defaultPattern = /DEFAULT\s*\(\s*datetime\(['"]now['"],\s*['"]utc['"]\)\s*\)/gi;
+                
+                // 计算匹配次数以确定需要添加多少个参数
+                let matches = 0;
+                let modifiedSql = sql;
+                
+                // 替换常规的datetime('now', 'utc')
                 if (nowPattern.test(sql)) {
-                    sql = sql.replace(nowPattern, '?');
-                    
+                    matches = (sql.match(nowPattern) || []).length;
+                    modifiedSql = sql.replace(nowPattern, '?');
+                }
+                
+                // 替换DEFAULT (datetime('now', 'utc'))
+                // 注意：这种情况SQLite会自动处理，实际不需要替换参数
+                // 但我们将它记录下来以便调试
+                if (defaultPattern.test(sql)) {
+                    logger.debug(`SQL中包含默认时间戳: ${sql}`);
+                }
+                
+                // 如果有匹配，添加对应数量的参数
+                if (matches > 0) {
                     // 处理参数
                     if (!params) {
-                        params = [self.formatTimestamp()];
+                        params = Array(matches).fill(self.formatTimestamp());
                     } else if (Array.isArray(params)) {
-                        params.push(self.formatTimestamp());
+                        for (let i = 0; i < matches; i++) {
+                            params.push(self.formatTimestamp());
+                        }
                     } else {
                         // 如果params是回调函数
                         callback = params;
-                        params = [self.formatTimestamp()];
+                        params = Array(matches).fill(self.formatTimestamp());
                     }
                     
-                    logger.debug(`修正SQL时间戳: ${sql} 参数: ${JSON.stringify(params)}`);
+                    sql = modifiedSql;
+                    logger.debug(`修正SQL时间戳 (匹配 ${matches} 次): ${sql} 参数: ${JSON.stringify(params)}`);
                 }
             }
             
@@ -136,7 +152,25 @@ class Database {
     }
 }
 
+// 在类定义之外，添加通用时间戳格式化函数
+/**
+ * 格式化时间戳为统一格式，确保一致的时区处理
+ * @param {string|Date} timestamp - 要格式化的时间戳，如果为null则使用当前时间
+ * @returns {string} - 格式化后的时间戳字符串
+ */
+function formatTimestamp(timestamp = null) {
+    if (!timestamp) {
+        // 使用UTC时间格式，避免系统时区影响
+        return moment().utc().format('YYYY-MM-DD HH:mm:ss');
+    }
+    
+    // 对于传入的时间戳，确保转换为UTC
+    return moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
+}
+
 // 创建单例实例
 const database = new Database();
 
+// 导出数据库实例和格式化函数
 module.exports = database;
+module.exports.formatTimestamp = formatTimestamp;

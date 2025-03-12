@@ -767,6 +767,13 @@ class AlertModel {
             // 解析条件JSON
             const conditionData = JSON.parse(alert.condition_json);
             
+            // 使用moment-timezone格式化时间戳
+            const formatTime = (timestamp) => {
+                if (!timestamp) return null;
+                // 确保SQLite的时间戳被正确解析
+                return moment(timestamp).format('YYYY-MM-DD HH:mm:ss');
+            };
+            
             return {
                 id: alert.id,
                 tokenId: alert.token_id,
@@ -779,9 +786,9 @@ class AlertModel {
                 cooldown: alert.cooldown,
                 priority: alert.priority,
                 description: alert.description,
-                lastTriggered: alert.last_triggered,
-                createdAt: alert.created_at,
-                updatedAt: alert.updated_at
+                lastTriggered: formatTime(alert.last_triggered),
+                createdAt: formatTime(alert.created_at),
+                updatedAt: formatTime(alert.updated_at)
             };
         } catch (error) {
             logger.error(`格式化告警数据失败: ${error.message}`, { alert, error });
