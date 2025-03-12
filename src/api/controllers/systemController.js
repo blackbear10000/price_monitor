@@ -54,7 +54,7 @@ exports.getSystemStatus = async (req, res) => {
         };
         
         // 获取最近的价格记录
-        const latestPrices = await priceModel.getLatestPrices();
+        const latestPrices = await priceModel.getAllLatestPrices();
         
         // 获取系统错误日志
         const recentErrors = await db.all(
