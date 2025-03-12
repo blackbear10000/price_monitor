@@ -30,9 +30,10 @@ class TelegramNotifier {
     
     // 格式化时间
     formatTime(timestamp) {
+        // 强制使用UTC+8时区（中国标准时间）
         return moment(timestamp)
-            .tz(this.timezone)
-            .format('YYYY-MM-DD HH:mm:ss z');
+            .tz('Asia/Shanghai')
+            .format('YYYY-MM-DD HH:mm:ss [UTC+8]');
     }
     
     // 带重试的API请求
@@ -92,7 +93,9 @@ class TelegramNotifier {
                 condition, 
                 triggerValue, 
                 time,
-                description 
+                description,
+                priceSource,
+                priceTimestamp
             } = alertData;
             
             // 格式化条件文本
@@ -106,17 +109,30 @@ class TelegramNotifier {
                 const timeframeHours = (triggerValue.timeframe || 300) / 3600;
                 const actualChange = triggerValue.actualChange || '未知';
                 
+                // 如果有历史价格信息，添加详细比较
+                const historyPrice = triggerValue.historyPrice;
+                const historyTime = triggerValue.historyTime;
+                
+                let compareDetail = '';
+                if (historyPrice && historyTime) {
+                    compareDetail = `\n参考价格: $${historyPrice} (${this.formatTime(historyTime)})`;
+                }
+                
                 conditionText = condition === 'increase' 
-                    ? `在${timeframeHours}小时内上涨超过 ${triggerValue.value}% (实际: ${actualChange}%)` 
-                    : `在${timeframeHours}小时内下跌超过 ${triggerValue.value}% (实际: ${actualChange}%)`;
+                    ? `在${timeframeHours}小时内上涨超过 ${triggerValue.value}% (实际: ${actualChange}%)${compareDetail}` 
+                    : `在${timeframeHours}小时内下跌超过 ${triggerValue.value}% (实际: ${actualChange}%)${compareDetail}`;
             }
+            
+            // 价格来源信息
+            const priceInfo = `$${currentPrice}${priceTimestamp ? ` (${this.formatTime(priceTimestamp)})` : ''}`;
+            const sourceInfo = priceSource ? `\n价格来源: ${priceSource}` : '';
             
             // 构建消息
             const message = `
 🚨 <b>价格告警</b> 🚨
 代币: <b>${tokenSymbol}</b> (${tokenId})
 ${tokenDescription ? `描述: ${tokenDescription}\n` : ''}
-当前价格: <b>$${currentPrice}</b>
+当前价格: <b>${priceInfo}</b>${sourceInfo}
 告警类型: ${alertType === 'price' ? '固定价格' : '价格变化百分比'}
 触发条件: ${conditionText}
 触发时间: ${this.formatTime(time)}

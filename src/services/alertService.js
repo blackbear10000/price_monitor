@@ -6,6 +6,9 @@ const telegramNotifier = require('../utils/telegram');
 const localNotifier = require('../utils/localNotifier');
 const config = require('../config');
 const moment = require('moment-timezone');
+const db = require('../utils/database');
+const path = require('path');
+const fs = require('fs');
 
 class AlertService {
     constructor() {
@@ -76,17 +79,31 @@ class AlertService {
     async checkAlertsForToken(token, alerts, currentPrice) {
         const triggeredAlerts = [];
         
+        // 添加防重复告警机制
+        const alertCache = new Map();
+        
         for (const alert of alerts) {
             try {
                 // 检查冷却期
                 if (alert.lastTriggered) {
                     const lastTriggeredTime = moment(alert.lastTriggered);
-                    const cooldownEnds = lastTriggeredTime.add(alert.cooldown, 'seconds');
+                    // 注意：不要使用add方法，它会修改原始对象，使用clone避免修改原始时间对象
+                    const cooldownEnds = lastTriggeredTime.clone().add(alert.cooldown, 'seconds');
                     
                     if (moment().isBefore(cooldownEnds)) {
-                        logger.debug(`跳过告警 ${alert.id}，仍在冷却期内`);
+                        const remainingCooldown = cooldownEnds.diff(moment(), 'minutes');
+                        logger.debug(`跳过告警 ${alert.id}，仍在冷却期内，剩余约${remainingCooldown}分钟`);
                         continue;
                     }
+                }
+                
+                // 创建缓存键，用于防止同一轮检查中多次触发相同条件
+                const cacheKey = `${token.id}-${alert.type}-${alert.condition}-${alert.value}`;
+                
+                // 如果在这一轮检查中已经触发过，跳过
+                if (alertCache.has(cacheKey)) {
+                    logger.debug(`跳过告警 ${alert.id}，相同条件已在此轮检查中触发过`);
+                    continue;
                 }
                 
                 let isTriggered = false;
@@ -124,16 +141,20 @@ class AlertService {
                     
                     if (priceHistory.history.length > 0) {
                         const oldPrice = priceHistory.history[0].price;
+                        const historyTimestamp = priceHistory.history[0].timestamp;
                         const percentChange = ((currentPrice - oldPrice) / oldPrice) * 100;
                         
                         logger.debug(`比较价格: 当前=${currentPrice}, 历史=${oldPrice}`);
+                        logger.debug(`历史价格时间: ${historyTimestamp}`);
                         logger.debug(`计算变化百分比: (${currentPrice} - ${oldPrice}) / ${oldPrice} * 100 = ${percentChange.toFixed(2)}%`);
                         
                         // 更新触发值为实际百分比变化
                         triggerValue = {
                             value: alert.value,
                             timeframe: alert.timeframe,
-                            actualChange: percentChange.toFixed(2)
+                            actualChange: percentChange.toFixed(2),
+                            historyPrice: oldPrice,
+                            historyTime: historyTimestamp
                         };
                         
                         if (alert.condition === 'increase' && percentChange >= alert.value) {
@@ -158,7 +179,34 @@ class AlertService {
                 
                 // 如果触发了告警
                 if (isTriggered) {
+                    // 立即将条件添加到缓存，防止同样的条件在同一轮中再次触发
+                    alertCache.set(cacheKey, true);
+                    
                     logger.info(`触发告警: ${token.symbol} ${alert.type} ${alert.condition} ${alert.value}`);
+                    
+                    // 检查是否已经有相同告警记录且未发送通知的记录
+                    const recentTriggered = await this.checkRecentTriggeredAlert(
+                        alert.id, token.id, alert.type, alert.condition, triggerValue
+                    );
+                    
+                    if (recentTriggered) {
+                        logger.info(`发现相同的未通知告警记录，将复用已有记录: ${recentTriggered.id}`);
+                        
+                        // 记录到触发的告警列表
+                        triggeredAlerts.push({
+                            alertId: alert.id,
+                            tokenId: token.id,
+                            tokenSymbol: token.symbol,
+                            alertType: alert.type,
+                            condition: alert.condition,
+                            triggerValue,
+                            currentPrice,
+                            triggeredAt: moment().toISOString(),
+                            recordId: recentTriggered.id // 使用现有记录ID
+                        });
+                        
+                        continue; // 跳过创建新记录
+                    }
                     
                     // 记录告警触发
                     const alertRecord = await alertModel.recordAlertTrigger(
@@ -185,11 +233,16 @@ class AlertService {
                     
                     // 发送通知
                     try {
+                        // 获取最新价格的详细信息
+                        const latestPrice = await priceModel.getLatestPrice(token.id);
+                        
                         const notificationData = {
                             tokenSymbol: token.symbol,
                             tokenId: token.id,
                             tokenDescription: token.description,
                             currentPrice,
+                            priceSource: 'API数据源', // 您可以根据实际情况修改这个值
+                            priceTimestamp: latestPrice.lastUpdated, // 价格的时间戳
                             alertType: alert.type,
                             condition: alert.condition,
                             triggerValue,
@@ -214,9 +267,13 @@ class AlertService {
                             await localNotifier.saveAlertLocal(notificationData);
                         }
                         
-                        // 无论通知是否成功，都更新告警记录状态
-                        await alertModel.updateAlertNotification(alertRecord.id, true);
-                        logger.info(`告警通知处理完成: ${alertRecord.id}`);
+                        // 仅当通知发送成功或已保存到本地文件时，才更新告警记录状态
+                        if (notificationSent || await this.checkLocalNotificationExists(token.symbol, alert.type, alert.condition)) {
+                            await alertModel.updateAlertNotification(alertRecord.id, true);
+                            logger.info(`告警通知处理完成: ${alertRecord.id}`);
+                        } else {
+                            logger.warn(`告警通知处理失败，将在下次检查时重试: ${alertRecord.id}`);
+                        }
                     } catch (notifyError) {
                         logger.error(`发送告警通知过程中发生错误: ${notifyError.message}`, { 
                             alertId: alert.id, tokenId: token.id, error: notifyError 
@@ -242,6 +299,30 @@ class AlertService {
         }
         
         return triggeredAlerts;
+    }
+    
+    // 新增方法：检查最近已触发但未发送通知的告警记录
+    async checkRecentTriggeredAlert(alertId, tokenId, alertType, condition, triggerValue) {
+        try {
+            // 查询最近1小时内，相同条件触发但未发送通知的告警记录
+            const recentRecord = await db.get(
+                `SELECT * FROM alert_records 
+                 WHERE alert_id = ? 
+                 AND token_id = ? 
+                 AND alert_type = ? 
+                 AND condition = ? 
+                 AND notification_sent = 0
+                 AND triggered_at > datetime('now', '-1 hour')
+                 ORDER BY triggered_at DESC 
+                 LIMIT 1`,
+                [alertId, tokenId, alertType, condition]
+            );
+            
+            return recentRecord;
+        } catch (error) {
+            logger.error(`检查最近告警记录失败: ${error.message}`, { error });
+            return null;
+        }
     }
     
     // 检查单个代币的告警条件
@@ -291,6 +372,35 @@ class AlertService {
         } catch (error) {
             logger.error(`检查代币告警条件失败: ${error.message}`, { tokenId, error });
             throw error;
+        }
+    }
+    
+    // 新增方法：检查本地通知文件是否存在
+    async checkLocalNotificationExists(tokenSymbol, alertType, condition) {
+        try {
+            const alertsDir = path.join(process.cwd(), 'data', 'alerts');
+            if (!fs.existsSync(alertsDir)) {
+                return false;
+            }
+            
+            // 读取最近1小时内创建的文件
+            const files = fs.readdirSync(alertsDir)
+                .filter(file => {
+                    const match = file.match(/^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_.*\.json$/);
+                    if (!match) return false;
+                    
+                    const fileTimestamp = match[1].replace(/_/g, ' ').replace(/-/g, ':');
+                    const fileTime = moment(`${fileTimestamp}`);
+                    return fileTime.isAfter(moment().subtract(1, 'hour')) && 
+                           file.includes(tokenSymbol) && 
+                           file.includes(alertType) && 
+                           file.includes(condition);
+                });
+            
+            return files.length > 0;
+        } catch (error) {
+            logger.error(`检查本地通知文件失败: ${error.message}`, { error });
+            return false;
         }
     }
 }

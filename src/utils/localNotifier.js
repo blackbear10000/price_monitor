@@ -19,9 +19,10 @@ class LocalNotifier {
     
     // 格式化时间
     formatTime(timestamp) {
+        // 强制使用UTC+8时区（中国标准时间）
         return moment(timestamp)
-            .tz(this.timezone)
-            .format('YYYY-MM-DD HH:mm:ss z');
+            .tz('Asia/Shanghai')
+            .format('YYYY-MM-DD HH:mm:ss [UTC+8]');
     }
     
     // 保存告警到本地文件
