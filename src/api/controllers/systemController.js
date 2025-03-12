@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 
 // 获取系统状态信息
-exports.getStatus = async (req, res) => {
+exports.getSystemStatus = async (req, res) => {
     try {
         // 获取系统运行时间
         const uptime = process.uptime();

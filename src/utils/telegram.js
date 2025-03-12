@@ -189,7 +189,9 @@ class TelegramNotifier {
             try {
                 logger.info(`尝试使用备用方法发送告警...`);
                 if (this.bot) {
-                    const simpleMessage = `🚨 价格告警: ${alertData.tokenSymbol} ${alertData.alertType} ${alertData.condition} ${alertData.currentPrice}`;
+                    // 使用与主要消息相同的简化格式
+                    const formattedPrice = this.formatPrice(alertData.currentPrice);
+                    const simpleMessage = `🚨 ${alertData.tokenSymbol} (${alertData.tokenId})\n当前价格: $${formattedPrice}\n触发时间: ${this.formatTime(alertData.time)}`;
                     await this.bot.telegram.sendMessage(this.chatId, simpleMessage);
                     logger.info(`备用方法发送成功`);
                     return true;
