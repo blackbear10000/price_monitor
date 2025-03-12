@@ -384,7 +384,7 @@ class AlertService {
                         triggerValue,
                         currentPrice,
                         triggeredAt: this.formatTimestamp(),
-                        recordId: recentTriggered.id // 使用现有记录ID
+                        recordId: alertRecord.id // 使用新创建的记录ID，而不是recentTriggered.id
                     });
                 }
             } catch (error) {
