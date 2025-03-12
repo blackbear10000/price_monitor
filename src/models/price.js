@@ -486,6 +486,45 @@ class PriceModel {
             throw error;
         }
     }
+    
+    // 获取指定时间点的价格
+    async getPriceAt(tokenId, timestamp) {
+        try {
+            // 检查代币是否存在
+            const token = await tokenModel.getToken(tokenId);
+            if (!token) {
+                throw new Error(`代币ID '${tokenId}' 不存在`);
+            }
+            
+            // 将输入时间转换为UTC格式
+            const utcTime = moment.utc(timestamp).format('YYYY-MM-DD HH:mm:ss');
+            logger.debug(`获取 ${tokenId} 在 ${utcTime} 时刻的价格`);
+            
+            // 使用end参数查询指定时间点之前的最后一条价格记录
+            const record = await db.get(
+                `SELECT * FROM price_records 
+                 WHERE token_id = ? AND timestamp <= ? 
+                 ORDER BY timestamp DESC 
+                 LIMIT 1`,
+                [tokenId, utcTime]
+            );
+            
+            if (!record) {
+                logger.debug(`没有找到 ${tokenId} 在 ${utcTime} 之前的价格记录`);
+                return null;
+            }
+            
+            logger.debug(`找到价格记录: 时间=${record.timestamp}, 价格=${record.price}`);
+            
+            return {
+                timestamp: this.formatTime(record.timestamp),
+                price: record.price
+            };
+        } catch (error) {
+            logger.error(`获取指定时间点价格失败: ${error.message}`, { tokenId, timestamp, error });
+            throw error;
+        }
+    }
 }
 
 // 创建单例实例

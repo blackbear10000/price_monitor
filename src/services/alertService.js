@@ -163,16 +163,14 @@ class AlertService {
                     // 如果是百分比告警，计算当前趋势与前一次告警趋势的差异
                     // 查询当前参考时间点的价格
                     const timeAgo = moment().subtract(alert.timeframe, 'seconds').toISOString();
-                    const historyOptions = {
-                        start: timeAgo,
-                        limit: 1,
-                        interval: 'raw'
-                    };
                     
-                    const priceHistory = await priceModel.getPriceHistory(token.id, historyOptions);
+                    // 使用新的getPriceAt方法获取历史价格
+                    const historicalPrice = await priceModel.getPriceAt(token.id, timeAgo);
                     
-                    if (priceHistory.history.length > 0) {
-                        const currentReferencePrice = priceHistory.history[0].price;
+                    logger.debug(`查询结果: ${historicalPrice ? '找到历史价格记录' : '没有找到历史价格记录'}`);
+                    
+                    if (historicalPrice) {
+                        const currentReferencePrice = historicalPrice.price;
                         
                         // 检查前一次告警的参考价格（如果可以获取）
                         try {
@@ -231,21 +229,14 @@ class AlertService {
                     logger.debug(`检查代币: ${token.symbol}, 当前价格: ${currentPrice}`);
                     logger.debug(`查询 ${alert.timeframe} 秒前的价格: ${timeAgo}`);
                     
-                    const historyOptions = {
-                        start: timeAgo,
-                        limit: 1,
-                        interval: 'raw'
-                    };
+                    // 使用新的getPriceAt方法获取历史价格
+                    const historicalPrice = await priceModel.getPriceAt(token.id, timeAgo);
                     
-                    logger.debug(`发送查询参数: ${JSON.stringify(historyOptions)}`);
+                    logger.debug(`查询结果: ${historicalPrice ? '找到历史价格记录' : '没有找到历史价格记录'}`);
                     
-                    const priceHistory = await priceModel.getPriceHistory(token.id, historyOptions);
-                    
-                    logger.debug(`查询结果: 返回 ${priceHistory.history.length} 条记录`);
-                    
-                    if (priceHistory.history.length > 0) {
-                        const oldPrice = priceHistory.history[0].price;
-                        const historyTimestamp = priceHistory.history[0].timestamp;
+                    if (historicalPrice) {
+                        const oldPrice = historicalPrice.price;
+                        const historyTimestamp = historicalPrice.timestamp;
                         const percentChange = ((currentPrice - oldPrice) / oldPrice) * 100;
                         
                         logger.debug(`比较价格: 当前=${currentPrice}, 历史=${oldPrice}`);
