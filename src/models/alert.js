@@ -336,7 +336,8 @@ class AlertModel {
                 oneTime,
                 cooldown,
                 priority,
-                description
+                description,
+                lastTriggered
             } = alertData;
             
             // 构建更新字段
@@ -408,6 +409,12 @@ class AlertModel {
             if (description !== undefined) {
                 updates.push('description = ?');
                 params.push(description);
+            }
+            
+            // 处理最后触发时间
+            if (lastTriggered !== undefined) {
+                updates.push('last_triggered = ?');
+                params.push(lastTriggered);
             }
             
             if (updates.length === 0) {
