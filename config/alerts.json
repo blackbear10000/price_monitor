@@ -1,18 +1,6 @@
 {
   "global": [
     {
-      "id": "global-alert-decrease-1",
-      "type": "percentage",
-      "condition": "decrease",
-      "value": 1,
-      "timeframe": 3600,
-      "enabled": true,
-      "oneTime": false,
-      "cooldown": 3600,
-      "priority": "medium",
-      "description": "1小时内下跌超过1%"
-    },
-    {
       "id": "global-alert-decrease-2",
       "type": "percentage",
       "condition": "decrease",
@@ -35,18 +23,6 @@
       "cooldown": 86400,
       "priority": "medium",
       "description": "24小时内下跌超过20%"
-    },
-    {
-      "id": "global-alert-increase-1",
-      "type": "percentage",
-      "condition": "increase",
-      "value": 1,
-      "timeframe": 3600,
-      "enabled": true,
-      "oneTime": false,
-      "cooldown": 3600,
-      "priority": "medium",
-      "description": "1小时内上涨超过1%"
     },
     {
       "id": "global-alert-increase-2",
