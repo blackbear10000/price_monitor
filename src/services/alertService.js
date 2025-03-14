@@ -151,68 +151,6 @@ class AlertService {
                     continue;
                 }
                 
-                // 检查24小时内是否已触发过类似的告警条件（特别是百分比变化类型）
-                const last24HourAlerts = await db.all(
-                    `SELECT * FROM alert_records 
-                     WHERE alert_id = ? 
-                     AND token_id = ? 
-                     AND alert_type = ? 
-                     AND condition = ? 
-                     AND triggered_at > datetime('now', '-24 hours')
-                     ORDER BY triggered_at DESC`,
-                    [alert.id, token.id, alert.type, alert.condition]
-                );
-                
-                // 对于百分比变化告警，判断是否是同一个下跌/上涨趋势的延续
-                if (alert.type === 'percentage' && last24HourAlerts.length > 0) {
-                    // 如果是百分比告警，计算当前趋势与前一次告警趋势的差异
-                    // 查询当前参考时间点的价格
-                    const timeAgo = moment().subtract(alert.timeframe, 'seconds').toISOString();
-                    
-                    // 使用新的getPriceAt方法获取历史价格
-                    const historicalPrice = await priceModel.getPriceAt(token.id, timeAgo);
-                    
-                    logger.debug(`查询结果: ${historicalPrice ? '找到历史价格记录' : '没有找到历史价格记录'}`);
-                    
-                    if (historicalPrice) {
-                        const currentReferencePrice = historicalPrice.price;
-                        
-                        // 检查前一次告警的参考价格（如果可以获取）
-                        try {
-                            for (const prevAlert of last24HourAlerts) {
-                                const prevTriggerValue = JSON.parse(prevAlert.trigger_value);
-                                
-                                // 如果能获取到前一次告警的历史价格，比较趋势
-                                if (prevTriggerValue.historyPrice) {
-                                    // 获取前一次告警时的当前价格
-                                    const prevCurrentPrice = prevAlert.current_price;
-                                    
-                                    // 计算前一次告警的趋势
-                                    const prevTrend = prevCurrentPrice - prevTriggerValue.historyPrice;
-                                    
-                                    // 计算当前的趋势
-                                    const currentTrend = currentPrice - currentReferencePrice;
-                                    
-                                    // 如果方向相同且当前趋势没有比前一次告警时强很多（变化不超过20%），则认为是同一趋势
-                                    if ((prevTrend > 0 && currentTrend > 0) || (prevTrend < 0 && currentTrend < 0)) {
-                                        const prevChangeAbs = Math.abs(prevTrend / prevTriggerValue.historyPrice * 100);
-                                        const curChangeAbs = Math.abs(currentTrend / currentReferencePrice * 100);
-                                        
-                                        // 如果当前变化百分比与上次触发时相差不大，认为是同一趋势延续，跳过
-                                        if (Math.abs(curChangeAbs - prevChangeAbs) < 3) {
-                                            logger.debug(`跳过告警 ${alert.id}，与前次告警 ${prevAlert.id} 趋势相似，变化差异小于3%`);
-                                            logger.debug(`前次变化: ${prevChangeAbs.toFixed(2)}%, 当前变化: ${curChangeAbs.toFixed(2)}%`);
-                                            continue;
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (error) {
-                            logger.warn(`比较告警趋势时出错: ${error.message}`);
-                        }
-                    }
-                }
-                
                 let isTriggered = false;
                 let triggerValue = alert.value;
                 
@@ -413,7 +351,7 @@ class AlertService {
     // 检查最近已触发的告警记录，不限于未发送通知的记录
     async checkRecentTriggeredAlert(alertId, tokenId, alertType, condition, triggerValue) {
         try {
-            // 查询最近1小时内，相同条件触发的告警记录（不再限制notification_sent=0）
+            // 查询最近1小时内，相同条件触发的告警记录（不再限制notification_sent状态）
             const recentRecord = await db.get(
                 `SELECT * FROM alert_records 
                  WHERE alert_id = ? 
@@ -426,47 +364,8 @@ class AlertService {
                 [alertId, tokenId, alertType, condition]
             );
             
-            // 如果找到记录，检查触发值是否有明显差异
-            if (recentRecord) {
-                try {
-                    // 对于百分比告警，解析JSON中的actualChange值
-                    if (alertType === 'percentage') {
-                        let previousTriggerData = JSON.parse(recentRecord.trigger_value);
-                        let currentTriggerData = typeof triggerValue === 'object' ? 
-                                                triggerValue : JSON.parse(triggerValue);
-                        
-                        // 如果两次告警的变化百分比相差不超过5个百分点，视为相同告警
-                        let prevChange = parseFloat(previousTriggerData.actualChange);
-                        let currChange = parseFloat(currentTriggerData.actualChange);
-                        
-                        if (Math.abs(prevChange - currChange) < 5) {
-                            logger.debug(`检测到相似的百分比变化告警: 之前=${prevChange}%, 当前=${currChange}%`);
-                            return recentRecord;
-                        }
-                        
-                        logger.debug(`百分比变化告警差异显著: 之前=${prevChange}%, 当前=${currChange}%`);
-                    }
-                    // 对于价格告警，直接比较价格值
-                    else if (alertType === 'price') {
-                        let prevValue = parseFloat(recentRecord.trigger_value);
-                        let currValue = parseFloat(triggerValue);
-                        
-                        // 如果价格变化小于3%，视为相同告警
-                        if (Math.abs((currValue - prevValue) / prevValue * 100) < 3) {
-                            logger.debug(`检测到相似的价格告警: 之前=${prevValue}, 当前=${currValue}`);
-                            return recentRecord;
-                        }
-                        
-                        logger.debug(`价格告警差异显著: 之前=${prevValue}, 当前=${currValue}`);
-                    }
-                } catch (e) {
-                    // 如果解析失败，默认返回找到的记录，防止重复告警
-                    logger.warn(`解析告警触发值失败，默认视为相同告警: ${e.message}`);
-                    return recentRecord;
-                }
-            }
-            
-            return null;
+            // 直接返回找到的记录，不再进行相似性判断
+            return recentRecord;
         } catch (error) {
             logger.error(`检查最近告警记录失败: ${error.message}`, { error });
             return null;
