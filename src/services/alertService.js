@@ -47,12 +47,12 @@ class AlertService {
     // 处理时间戳，确保使用正确的时区
     formatTimestamp(timestamp = null) {
         if (!timestamp) {
-            // 直接生成UTC时间戳，不受系统时区影响
-            return moment.utc().toISOString();
+            // 直接生成UTC时间戳，格式与数据库中使用的格式一致
+            return moment.utc().format('YYYY-MM-DD HH:mm:ss');
         }
         
-        // 直接解析为UTC时间戳，不依赖系统时区
-        return moment.utc(timestamp).toISOString();
+        // 直接解析为UTC时间戳，格式与数据库中使用的格式一致
+        return moment.utc(timestamp).format('YYYY-MM-DD HH:mm:ss');
     }
     
     // 检查所有代币的告警条件
@@ -127,14 +127,19 @@ class AlertService {
                 // 检查冷却期
                 if (alert.lastTriggered) {
                     const lastTriggeredTime = moment.utc(alert.lastTriggered);
+                    const cooldownSeconds = alert.cooldown || 86400; // 默认1天
                     // 注意：不要使用add方法，它会修改原始对象，使用clone避免修改原始时间对象
-                    const cooldownEnds = lastTriggeredTime.clone().add(alert.cooldown || 86400, 'seconds');
+                    const cooldownEnds = lastTriggeredTime.clone().add(cooldownSeconds, 'seconds');
                     
                     if (moment.utc().isBefore(cooldownEnds)) {
                         const remainingCooldown = cooldownEnds.diff(moment.utc(), 'minutes');
-                        logger.debug(`跳过告警 ${alert.id}，仍在冷却期内，剩余约${remainingCooldown}分钟`);
+                        logger.info(`跳过告警 ${alert.id}，仍在冷却期内，冷却时间=${cooldownSeconds}秒，剩余约${remainingCooldown}分钟`);
                         continue;
                     }
+                    
+                    logger.debug(`告警 ${alert.id} 冷却期已结束，上次触发时间: ${alert.lastTriggered}`);
+                } else {
+                    logger.debug(`告警 ${alert.id} 之前从未触发过`);
                 }
                 
                 // 创建缓存键，用于防止同一轮检查中多次触发相同条件
@@ -315,15 +320,23 @@ class AlertService {
                         alert.description
                     );
                     
+                    // 设置当前UTC时间作为最后触发时间
+                    const now = moment.utc().format('YYYY-MM-DD HH:mm:ss');
+                    logger.info(`告警 ${alert.id} 已触发，设置冷却期 ${alert.cooldown || 86400} 秒`);
+                    
                     // 如果是一次性告警，禁用它
                     if (alert.oneTime) {
-                        await alertModel.updateAlert(alert.id, { enabled: false });
+                        await alertModel.updateAlert(alert.id, { 
+                            enabled: false,
+                            lastTriggered: now  // 即使禁用也更新最后触发时间
+                        });
                         logger.info(`已禁用一次性告警: ${alert.id}`);
                     } else {
                         // 更新最后触发时间
                         await alertModel.updateAlert(alert.id, { 
-                            lastTriggered: this.formatTimestamp() 
+                            lastTriggered: now
                         });
+                        logger.info(`已更新告警最后触发时间: ${alert.id}`);
                     }
                     
                     // 发送通知
@@ -397,24 +410,63 @@ class AlertService {
         return triggeredAlerts;
     }
     
-    // 新增方法：检查最近已触发但未发送通知的告警记录
+    // 检查最近已触发的告警记录，不限于未发送通知的记录
     async checkRecentTriggeredAlert(alertId, tokenId, alertType, condition, triggerValue) {
         try {
-            // 查询最近1小时内，相同条件触发但未发送通知的告警记录
+            // 查询最近1小时内，相同条件触发的告警记录（不再限制notification_sent=0）
             const recentRecord = await db.get(
                 `SELECT * FROM alert_records 
                  WHERE alert_id = ? 
                  AND token_id = ? 
                  AND alert_type = ? 
                  AND condition = ? 
-                 AND notification_sent = 0
                  AND triggered_at > datetime('now', '-1 hour')
                  ORDER BY triggered_at DESC 
                  LIMIT 1`,
                 [alertId, tokenId, alertType, condition]
             );
             
-            return recentRecord;
+            // 如果找到记录，检查触发值是否有明显差异
+            if (recentRecord) {
+                try {
+                    // 对于百分比告警，解析JSON中的actualChange值
+                    if (alertType === 'percentage') {
+                        let previousTriggerData = JSON.parse(recentRecord.trigger_value);
+                        let currentTriggerData = typeof triggerValue === 'object' ? 
+                                                triggerValue : JSON.parse(triggerValue);
+                        
+                        // 如果两次告警的变化百分比相差不超过5个百分点，视为相同告警
+                        let prevChange = parseFloat(previousTriggerData.actualChange);
+                        let currChange = parseFloat(currentTriggerData.actualChange);
+                        
+                        if (Math.abs(prevChange - currChange) < 5) {
+                            logger.debug(`检测到相似的百分比变化告警: 之前=${prevChange}%, 当前=${currChange}%`);
+                            return recentRecord;
+                        }
+                        
+                        logger.debug(`百分比变化告警差异显著: 之前=${prevChange}%, 当前=${currChange}%`);
+                    }
+                    // 对于价格告警，直接比较价格值
+                    else if (alertType === 'price') {
+                        let prevValue = parseFloat(recentRecord.trigger_value);
+                        let currValue = parseFloat(triggerValue);
+                        
+                        // 如果价格变化小于3%，视为相同告警
+                        if (Math.abs((currValue - prevValue) / prevValue * 100) < 3) {
+                            logger.debug(`检测到相似的价格告警: 之前=${prevValue}, 当前=${currValue}`);
+                            return recentRecord;
+                        }
+                        
+                        logger.debug(`价格告警差异显著: 之前=${prevValue}, 当前=${currValue}`);
+                    }
+                } catch (e) {
+                    // 如果解析失败，默认返回找到的记录，防止重复告警
+                    logger.warn(`解析告警触发值失败，默认视为相同告警: ${e.message}`);
+                    return recentRecord;
+                }
+            }
+            
+            return null;
         } catch (error) {
             logger.error(`检查最近告警记录失败: ${error.message}`, { error });
             return null;

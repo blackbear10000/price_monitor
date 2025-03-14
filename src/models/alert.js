@@ -533,7 +533,14 @@ class AlertModel {
                  triggerValueForDB, currentValue, priority, description]
             );
             
-            logger.info(`告警触发记录已添加: ${alertId} ${tokenId} ${alertType} ${condition}`);
+            // 同时更新告警的last_triggered字段，确保冷却期正常工作
+            // 使用标准UTC时间格式
+            const now = moment.utc().format('YYYY-MM-DD HH:mm:ss');
+            await this.updateAlert(alertId, {
+                lastTriggered: now
+            });
+            
+            logger.info(`告警触发记录已添加并更新last_triggered: ${alertId} ${tokenId} ${alertType} ${condition}`);
             
             return {
                 id: result.lastID,
