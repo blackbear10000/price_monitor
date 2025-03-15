@@ -533,14 +533,11 @@ class AlertModel {
                  triggerValueForDB, currentValue, priority, description]
             );
             
-            // 同时更新告警的last_triggered字段，确保冷却期正常工作
-            // 使用标准UTC时间格式
+            // 同时更新代币特定的最后触发时间
             const now = moment.utc().format('YYYY-MM-DD HH:mm:ss');
-            await this.updateAlert(alertId, {
-                lastTriggered: now
-            });
+            await this.updateAlertTokenLastTriggered(alertId, tokenId, now);
             
-            logger.info(`告警触发记录已添加并更新last_triggered: ${alertId} ${tokenId} ${alertType} ${condition}`);
+            logger.info(`告警触发记录已添加并更新代币特定的最后触发时间: ${alertId} ${tokenId} ${alertType} ${condition}`);
             
             return {
                 id: result.lastID,
@@ -839,6 +836,66 @@ class AlertModel {
                 createdAt: alert.created_at ? moment.utc(alert.created_at).format('YYYY-MM-DD HH:mm:ss') : null,
                 updatedAt: alert.updated_at ? moment.utc(alert.updated_at).format('YYYY-MM-DD HH:mm:ss') : null
             };
+        }
+    }
+    
+    // 获取告警-代币最后触发时间
+    async getAlertTokenLastTriggered(alertId, tokenId) {
+        try {
+            const record = await db.get(
+                `SELECT * FROM alert_token_triggers 
+                 WHERE alert_id = ? AND token_id = ?`,
+                [alertId, tokenId]
+            );
+            
+            return record;
+        } catch (error) {
+            logger.error(`获取告警-代币触发记录失败: ${error.message}`, { 
+                alertId, tokenId, error 
+            });
+            return null;
+        }
+    }
+    
+    // 更新告警-代币最后触发时间
+    async updateAlertTokenLastTriggered(alertId, tokenId, lastTriggered = null) {
+        try {
+            const timestamp = lastTriggered || moment.utc().format('YYYY-MM-DD HH:mm:ss');
+            
+            // 使用INSERT OR REPLACE简化操作（SQLite特性）
+            await db.run(
+                `INSERT OR REPLACE INTO alert_token_triggers 
+                 (alert_id, token_id, last_triggered, updated_at) 
+                 VALUES (?, ?, ?, datetime('now', 'utc'))`,
+                [alertId, tokenId, timestamp]
+            );
+            
+            logger.debug(`更新告警-代币最后触发时间成功: ${alertId}-${tokenId}, 时间: ${timestamp}`);
+            return true;
+        } catch (error) {
+            logger.error(`更新告警-代币最后触发时间失败: ${error.message}`, { 
+                alertId, tokenId, error 
+            });
+            return false;
+        }
+    }
+    
+    // 清除告警-代币最后触发时间
+    async clearAlertTokenLastTriggered(alertId, tokenId) {
+        try {
+            await db.run(
+                `DELETE FROM alert_token_triggers 
+                 WHERE alert_id = ? AND token_id = ?`,
+                [alertId, tokenId]
+            );
+            
+            logger.debug(`清除告警-代币最后触发时间成功: ${alertId}-${tokenId}`);
+            return true;
+        } catch (error) {
+            logger.error(`清除告警-代币最后触发时间失败: ${error.message}`, { 
+                alertId, tokenId, error 
+            });
+            return false;
         }
     }
 }

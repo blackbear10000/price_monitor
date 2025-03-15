@@ -124,22 +124,23 @@ class AlertService {
         
         for (const alert of alerts) {
             try {
-                // 检查冷却期
-                if (alert.lastTriggered) {
-                    const lastTriggeredTime = moment.utc(alert.lastTriggered);
+                // 检查代币特定的冷却期（新的逻辑）
+                const alertTokenRecord = await alertModel.getAlertTokenLastTriggered(alert.id, token.id);
+                
+                if (alertTokenRecord && alertTokenRecord.last_triggered) {
+                    const lastTriggeredTime = moment.utc(alertTokenRecord.last_triggered);
                     const cooldownSeconds = alert.cooldown || 86400; // 默认1天
-                    // 注意：不要使用add方法，它会修改原始对象，使用clone避免修改原始时间对象
                     const cooldownEnds = lastTriggeredTime.clone().add(cooldownSeconds, 'seconds');
                     
                     if (moment.utc().isBefore(cooldownEnds)) {
                         const remainingCooldown = cooldownEnds.diff(moment.utc(), 'minutes');
-                        logger.info(`跳过告警 ${alert.id}，仍在冷却期内，冷却时间=${cooldownSeconds}秒，剩余约${remainingCooldown}分钟`);
+                        logger.info(`跳过告警 ${alert.id} 对代币 ${token.symbol}，仍在冷却期内，冷却时间=${cooldownSeconds}秒，剩余约${remainingCooldown}分钟`);
                         continue;
                     }
                     
-                    logger.debug(`告警 ${alert.id} 冷却期已结束，上次触发时间: ${alert.lastTriggered}`);
+                    logger.debug(`告警 ${alert.id} 对代币 ${token.symbol} 的冷却期已结束，上次触发时间: ${alertTokenRecord.last_triggered}`);
                 } else {
-                    logger.debug(`告警 ${alert.id} 之前从未触发过`);
+                    logger.debug(`告警 ${alert.id} 对代币 ${token.symbol} 之前从未触发过`);
                 }
                 
                 // 创建缓存键，用于防止同一轮检查中多次触发相同条件
@@ -260,21 +261,17 @@ class AlertService {
                     
                     // 设置当前UTC时间作为最后触发时间
                     const now = moment.utc().format('YYYY-MM-DD HH:mm:ss');
-                    logger.info(`告警 ${alert.id} 已触发，设置冷却期 ${alert.cooldown || 86400} 秒`);
+                    logger.info(`告警 ${alert.id} 对代币 ${token.symbol} 已触发，设置冷却期 ${alert.cooldown || 86400} 秒`);
+                    
+                    // 更新代币特定的最后触发时间
+                    await alertModel.updateAlertTokenLastTriggered(alert.id, token.id, now);
                     
                     // 如果是一次性告警，禁用它
                     if (alert.oneTime) {
                         await alertModel.updateAlert(alert.id, { 
-                            enabled: false,
-                            lastTriggered: now  // 即使禁用也更新最后触发时间
+                            enabled: false
                         });
                         logger.info(`已禁用一次性告警: ${alert.id}`);
-                    } else {
-                        // 更新最后触发时间
-                        await alertModel.updateAlert(alert.id, { 
-                            lastTriggered: now
-                        });
-                        logger.info(`已更新告警最后触发时间: ${alert.id}`);
                     }
                     
                     // 发送通知
