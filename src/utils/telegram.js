@@ -198,7 +198,7 @@ class TelegramNotifier {
             // 构建简化的消息格式
             const message = `🚨 <b>${tokenSymbol}</b> (${tokenId})
 当前价格: <b>${priceInfo}</b>
-触发条件: ${conditionText}}`.trim();
+触发条件: ${conditionText}`.trim();
             
             logger.info(`准备发送价格告警通知: ${tokenSymbol}`);
             
