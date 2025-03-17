@@ -46,7 +46,7 @@ cp .env.example .env
 
 - `API_KEY`: API访问密钥
 - `TELEGRAM_BOT_TOKEN`: Telegram Bot的API令牌
-- `TELEGRAM_CHAT_ID`: 接收告警通知的Telegram聊天ID
+- `TELEGRAM_CHAT_ID`: 接收告警通知的Telegram聊天ID，支持多个ID（用逗号分隔，如：-1002273812199,683116107）
 - `PRICE_UPDATE_INTERVAL`: 价格更新周期（秒）
 - `DATABASE_PATH`: 数据库文件路径
 
