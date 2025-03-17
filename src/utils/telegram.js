@@ -184,8 +184,8 @@ class TelegramNotifier {
                 }
                 
                 conditionText = condition === 'increase' 
-                    ? `在${timeframeHours}小时内上涨超过 ${triggerValue.value}% (实际: ${actualChange}%)${compareDetail}` 
-                    : `在${timeframeHours}小时内下跌超过 ${triggerValue.value}% (实际: ${actualChange}%)${compareDetail}`;
+                    ? `在${timeframeHours}小时内上涨超过 ${triggerValue.value}% (实际: ${actualChange}%)` 
+                    : `在${timeframeHours}小时内下跌超过 ${triggerValue.value}% (实际: ${actualChange}%)`;
             }
             
             // 格式化价格显示
