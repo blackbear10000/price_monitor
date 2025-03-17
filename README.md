@@ -108,37 +108,3 @@ npm start
 ```
 X-API-Key: your_api_key_here
 ```
-
-## 开发
-
-### 项目结构
-
-```
-price_monitor/
-├── src/
-│   ├── config/               # 配置文件
-│   ├── models/               # 数据模型
-│   ├── services/             # 业务逻辑
-│   ├── api/                  # API接口
-│   │   ├── routes/           # 路由定义
-│   │   ├── controllers/      # 控制器
-│   │   └── middleware/       # 中间件
-│   ├── utils/                # 工具函数
-│   ├── db/                   # 数据库相关
-│   └── app.js                # 应用入口
-├── config/                   # 外部配置目录
-├── data/                     # 数据存储目录
-├── logs/                     # 日志目录
-├── .env                      # 环境变量
-└── package.json              # 项目依赖
-```
-
-### 运行测试
-
-```bash
-npm test
-```
-
-## 许可证
-
-MIT
