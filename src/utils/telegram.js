@@ -8,7 +8,7 @@ class TelegramNotifier {
     constructor() {
         try {
             this.botToken = config.telegramBotToken;
-            this.chatId = config.telegramChatId;
+            this.chatIds = config.telegramChatId.split(',').map(id => id.trim());
             this.timezone = config.timezone;
             this.maxRetries = 3;
             this.retryDelay = 2000;
@@ -21,7 +21,7 @@ class TelegramNotifier {
                 logger.error(`Telegram机器人错误: ${err.message}`, { error: err });
             });
             
-            logger.info('Telegram通知服务已初始化');
+            logger.info(`Telegram通知服务已初始化，配置的Chat IDs: ${this.chatIds.join(', ')}`);
         } catch (error) {
             logger.error(`Telegram通知服务初始化失败: ${error.message}`, { error });
             this.bot = null;
@@ -73,12 +73,12 @@ class TelegramNotifier {
     }
     
     // 带重试的API请求
-    async sendApiRequest(message, retryCount = 0) {
+    async sendApiRequest(message, chatId, retryCount = 0) {
         try {
             // 使用axios直接发送请求，避免Telegraf可能的问题
             const apiUrl = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
             const response = await axios.post(apiUrl, {
-                chat_id: this.chatId,
+                chat_id: chatId,
                 text: message,
                 parse_mode: 'HTML'
             }, {
@@ -87,7 +87,7 @@ class TelegramNotifier {
             
             return response.data;
         } catch (error) {
-            logger.error(`Telegram API请求失败 (尝试 ${retryCount + 1}/${this.maxRetries}): ${error.message}`);
+            logger.error(`Telegram API请求失败 (Chat ID: ${chatId}, 尝试 ${retryCount + 1}/${this.maxRetries}): ${error.message}`);
             
             // 详细记录错误信息
             if (error.response) {
@@ -105,16 +105,44 @@ class TelegramNotifier {
             if (retryCount < this.maxRetries) {
                 logger.info(`${retryCount + 1}/${this.maxRetries} - 等待 ${this.retryDelay}ms 后重试...`);
                 await new Promise(resolve => setTimeout(resolve, this.retryDelay));
-                return this.sendApiRequest(message, retryCount + 1);
+                return this.sendApiRequest(message, chatId, retryCount + 1);
             }
             
             throw error;
         }
     }
     
+    // 向所有配置的Chat ID发送消息
+    async sendToAllChats(message) {
+        const results = [];
+        const errors = [];
+
+        for (const chatId of this.chatIds) {
+            try {
+                const result = await this.sendApiRequest(message, chatId);
+                results.push({ chatId, success: true, result });
+            } catch (error) {
+                errors.push({ chatId, error: error.message });
+                logger.error(`发送到Chat ID ${chatId}失败: ${error.message}`);
+            }
+        }
+
+        // 如果所有发送都失败了，抛出错误
+        if (errors.length === this.chatIds.length) {
+            throw new Error(`向所有Chat ID发送消息均失败: ${JSON.stringify(errors)}`);
+        }
+
+        // 返回部分成功
+        return {
+            success: results.length > 0,
+            results,
+            errors
+        };
+    }
+    
     // 发送价格告警通知
     async sendPriceAlert(alertData) {
-        if (!this.botToken || !this.chatId) {
+        if (!this.botToken || this.chatIds.length === 0) {
             logger.error('Telegram配置不完整: 缺少token或chatId');
             return false;
         }
@@ -175,11 +203,11 @@ class TelegramNotifier {
             
             logger.info(`准备发送价格告警通知: ${tokenSymbol}`);
             
-            // 使用直接API请求发送消息
-            const result = await this.sendApiRequest(message);
+            // 使用新的sendToAllChats方法发送消息
+            const result = await this.sendToAllChats(message);
             
-            logger.info(`已发送价格告警通知: ${tokenSymbol}`);
-            return true;
+            logger.info(`已发送价格告警通知: ${tokenSymbol}, 成功发送到 ${result.results.length} 个Chat ID`);
+            return result.success;
         } catch (error) {
             logger.error(`发送价格告警通知失败 (所有重试尝试均失败): ${error.message}`, { error, alertData });
             
@@ -190,9 +218,22 @@ class TelegramNotifier {
                     // 使用与主要消息相同的简化格式
                     const formattedPrice = this.formatPrice(alertData.currentPrice);
                     const simpleMessage = `🚨 ${alertData.tokenSymbol} (${alertData.tokenId})\n当前价格: $${formattedPrice}\n触发时间: ${this.formatTime(alertData.time)}`;
-                    await this.bot.telegram.sendMessage(this.chatId, simpleMessage);
-                    logger.info(`备用方法发送成功`);
-                    return true;
+                    
+                    // 向所有Chat ID发送
+                    let anySuccess = false;
+                    for (const chatId of this.chatIds) {
+                        try {
+                            await this.bot.telegram.sendMessage(chatId, simpleMessage);
+                            anySuccess = true;
+                        } catch (chatError) {
+                            logger.error(`备用方法发送到Chat ID ${chatId}失败: ${chatError.message}`);
+                        }
+                    }
+                    
+                    if (anySuccess) {
+                        logger.info(`备用方法发送成功`);
+                        return true;
+                    }
                 }
             } catch (backupError) {
                 logger.error(`备用方法也失败了: ${backupError.message}`);
