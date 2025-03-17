@@ -192,14 +192,13 @@ class TelegramNotifier {
             const formattedPrice = this.formatPrice(currentPrice);
             
             // 价格来源信息
-            const priceInfo = `$${formattedPrice}${priceTimestamp ? ` (${this.formatTime(priceTimestamp)})` : ''}`;
+            const priceInfo = `$${formattedPrice}`;
             const sourceInfo = priceSource ? `\n价格来源: ${priceSource}` : '';
             
             // 构建简化的消息格式
             const message = `🚨 <b>${tokenSymbol}</b> (${tokenId})
 当前价格: <b>${priceInfo}</b>
-触发条件: ${conditionText}
-触发时间: ${this.formatTime(time)}`.trim();
+触发条件: ${conditionText}}`.trim();
             
             logger.info(`准备发送价格告警通知: ${tokenSymbol}`);
             
